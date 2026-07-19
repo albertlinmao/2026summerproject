@@ -1,0 +1,111 @@
+Data Modeling
+
+Table: club
+id: UUID
+name: SEATTLE SYNCHRONIZED SWIM TEAM 
+code: SST
+description: 
+city: Seattle, WA
+website:
+email:
+created:
+updated:
+opid:
+
+Table: team
+id: UUID
+year-season: string (2026)
+club: UUID - club id 
+name: 12U-blue
+created:
+updated:
+opid:
+
+Table: swimmer
+id: UUID
+fistname:
+lastname:
+midname:
+birthday:
+joined:
+active/dormant
+left:
+gender:
+created:
+updated:
+opid:
+
+table: team_swimmer
+id: UUID
+team_id: UUID
+swimmer_id: UUID
+created:
+updated:
+op_id:
+
+table: team_swimmer-history
+id: UUID
+team_id: UUID
+swimmer_id: UUID
+
+table: swim_meet
+id: UUID
+name: string - 2026 Junior Olympic Championship
+year: string - 2026
+happened: Jun 27, 2026 - Jul 4, 2026 
+host_city: Ypsilanti, MI
+
+table: swim_game
+id: UUID
+name: 12U Figure Competition | Youth Figure Competition | 12U Free Combo Final | 12U Duet Free Prelim
+happened: 6/27/2026
+game_type: figure / routine
+result_summary_PDF
+result_detailed_PDF
+
+table: game_referee
+id: UUID
+game_id
+title: referee / asst. referee
+name:
+
+table: game_judge
+id: UUID
+game_id
+title: J1 | J2 | J3 | J4 | J5
+figure_routine: - figure or routine
+judge_control: Elements | Artistic Impression | Synchronization
+figure_code: F1
+figure_name: Straight Ballet Leg 
+figure_difficulty: 1.6
+name: Candy Hipp  
+
+table: game_score
+id: UUID
+game_id:
+rank:
+draw:
+club_id:
+team_id:
+
+table: game_score_row
+id:
+game_score_id:
+row: 1
+expected_difficulty: 2.635
+actually_difficulty: 0.500 # failed
+judge_control: Elements | Artistic Impression | Synchronization
+ref: string - ACRO (0.8) | TRE1a (1.0), etc.
+j1_score: 6.75
+j2_score: 6.00
+j3_score: 6.50
+j4_score: 6.7.50
+penalty: 0.5
+
+table: game_club_swimmer
+id: uuid
+game_id:
+club_id:
+swimer_id:
+swimmer_name:
+gender:

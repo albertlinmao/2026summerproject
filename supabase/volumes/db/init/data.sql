@@ -1,0 +1,5 @@
+\set pguser `echo "$POSTGRES_USER"`
+
+CREATE DATABASE IF NOT EXISTS ezboard WITH OWNER :pguser;
+
+CREATE DATABASE IF NOT EXISTS keycloak WITH OWNER :pguser;

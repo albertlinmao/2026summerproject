@@ -1,0 +1,20 @@
+project_id = "user-management"
+
+[api]
+port = 54321
+extra_search_path = ["public", "extensions"]
+
+[auth]
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.external.saml]
+enabled = true
+
+[auth.external.email]
+enabled = true
+
+[edge_runtime]
+enabled = true
