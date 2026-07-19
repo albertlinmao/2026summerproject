@@ -1,5 +1,9 @@
 # Prompts to load data from Figure result
 
+## 2026-07-18
+
+load Figure Results.
+
 ## 2026-07-17
 
 enhance the script `ingest_figures.py` to use the event existing in the table. The existing criteria is the event_name existing in the `as_event` table, then use the existing event id to load the other data from the PDF file.
