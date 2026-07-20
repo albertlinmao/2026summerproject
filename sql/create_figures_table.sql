@@ -29,12 +29,12 @@ create table if not exists as_figure (
   created_at timestamptz default now()
 );
 
-create table if not exists as_figure_judge_panel (
+create table if not exists as_meet_judge_panel (
   id uuid default gen_random_uuid() primary key,
   meet_id uuid references as_meet(id) on delete cascade,
   figure_id uuid references as_figure(id) on delete cascade,
   figure_code_short text,
-  figure_name text,
+  panel_name text,
   panel json,
   created_at timestamptz default now()
 );

@@ -7,7 +7,7 @@ This will create the newly normalized tables:
 - `as_event`
 - `as_meet`
 - `as_figure`
-- `as_figure_judge_panel`
+- `as_meet_judge_panel`
 - `as_meet_figure_result`
 
 ## 2. Configure environment variables
