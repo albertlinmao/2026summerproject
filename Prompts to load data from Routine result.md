@@ -4,8 +4,31 @@
 
 Step1: modify table name `as_figure_judge_panel` to `as_meet_judge_panel` , and also modify the field `figure_name` to `panel_name`. And also update `ingest_figures.py` to address the changes.
 
-Stpe2:
-enhance `ingest_figures.py` to use the event and meet if exist in the tables. The existing criteria is the event_name existing in the `as_event` table and/or meet_name existing in the `as_meet`, then use the existing event id / meet id to load the other data from the PDF file.
+Step2:
+Create `as_meet_routine_result` table to store team/swimmer score in `sql\create_figures_table.sql`
+
+Here is the SQL to create the table
+
+create table if not exists as_meet_routine_result (
+id uuid default gen_random_uuid() primary key,
+meet_id uuid references as_meet(id) on delete cascade,
+rank text,
+draw text,
+team_code text,
+team_name text,
+team_athletes jsonb,
+total_difficulty jsonb,
+routine_scores jsonb,
+element_total numeric,
+artisticimpression_total numeric,
+synchronization_total numeric,
+routine_score numeric,
+source_file text,
+created_at timestamptz default now()
+);
+
+Stpe3:
+create `scripts\ingest_routines.py` based on `scripts\ingest_figures.py` to use the event and meet if exist in the tables. The existing criteria is the event_name existing in the `as_event` table and/or meet_name existing in the `as_meet`, then use the existing event id / meet id to load the other data from the PDF file.
 
 enhance the script to load data to `as_figure_judge_panel` table from the routine result PDF.
 
@@ -34,29 +57,7 @@ add new rows to import the referee/Asst. Referee/DTC/DATC infomation if show on 
 
 ```
 
-Create `as_meet_routine_result` table to store team/swimmer score in `sql\create_figures_table.sql`
-
-Here is the SQL to create the table
-
-create table if not exists as_meet_routine_result (
-id uuid default gen_random_uuid() primary key,
-meet_id uuid references as_meet(id) on delete cascade,
-rank text,
-draw text,
-team_code text,
-team_name text,
-team_athletes jsonb,
-total_difficulty jsonb,
-routine_scores jsonb,
-element_total numeric,
-artisticimpression_total numeric,
-synchronization_total numeric,
-routine_score numeric,
-source_file text,
-created_at timestamptz default now()
-);
-
-Here are 2 swimmers' score copied from the PDF to map with the data structure
+here are 2 swimmers' score copied from the PDF to map with the data structure to table `as_meet_figure_result`
 
 (id, meet_id,rank=1,draw=17,team_code="WCA",team_name="WALNUT CREEK AQUANUTS",team_athletes="[
 {

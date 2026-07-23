@@ -55,3 +55,21 @@ create table if not exists as_meet_figure_result (
   source_file text,
   created_at timestamptz default now()
 );
+
+create table if not exists as_meet_routine_result (
+  id uuid default gen_random_uuid() primary key,
+  meet_id uuid references as_meet(id) on delete cascade,
+  rank text,
+  draw text,
+  team_code text,
+  team_name text,
+  team_athletes jsonb,
+  total_difficulty jsonb,
+  routine_scores jsonb,
+  element_total numeric,
+  artisticimpression_total numeric,
+  synchronization_total numeric,
+  routine_score numeric,
+  source_file text,
+  created_at timestamptz default now()
+);
