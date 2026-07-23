@@ -182,14 +182,14 @@ def parse_figure_pdf_text(text: str) -> Dict[str, Any]:
     for f_short, panel in judges_panels.items():
         judges.append({
             "figure_code_short": f_short,
-            "panel_name": figures_dict[f_short]["name"],
+            "figure_name": figures_dict[f_short]["name"],
             "panel": panel
         })
         
     if referee_name:
         judges.append({
             "figure_code_short": None,
-            "panel_name": "Referee",
+            "figure_name": "Referee",
             "panel": {"Referee": referee_name}
         })
 
@@ -359,7 +359,7 @@ def insert_rows_to_supabase(payload: Dict[str, Any], source_file: str, dry_run: 
                 j["meet_id"] = meet_id
                 j["figure_id"] = fig_map.get(f_short)
                 judge_rows.append(j)
-            insert_rows("as_meet_judge_panel", judge_rows)
+            insert_rows("as_figure_judge_panel", judge_rows)
 
     if payload["athletes"]:
         athlete_rows = []
