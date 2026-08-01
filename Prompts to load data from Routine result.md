@@ -28,7 +28,7 @@ created_at timestamptz default now()
 );
 
 Stpe3:
-create `scripts\ingest_routines.py` based on `scripts\ingest_figures.py` to use the event and meet if exist in the tables. The existing criteria is the event_name existing in the `as_event` table and/or meet_name existing in the `as_meet`, then use the existing event id / meet id to load the other data from the PDF file.
+create a new `scripts\ingest_routines.py` based on `scripts\ingest_figures.py` to use the event and meet if exist in the tables. The existing criteria is the event_name existing in the `as_event` table and/or meet_name existing in the `as_meet`, then use the existing event id / meet id to load the other data from the PDF file.
 
 enhance the script to load data to `as_figure_judge_panel` table from the routine result PDF.
 

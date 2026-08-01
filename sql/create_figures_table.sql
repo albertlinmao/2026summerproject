@@ -49,9 +49,9 @@ create table if not exists as_meet_figure_result (
   athlete_name text,
   athlete_birth_year integer,
   penalty text,
-  total_score numeric,
-  routine_score numeric,
-  figure_scores jsonb,
+  total_score numeric,   // total score for the figures, it is useless for the routines, but we keep it for consistency
+  routine_score numeric, // weighted total score for the routines (figures), it is used to rank the swimmers
+  figure_scores jsonb,   // the detailed scores for each figure
   source_file text,
   created_at timestamptz default now()
 );
