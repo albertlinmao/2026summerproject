@@ -1,0 +1,60 @@
+openapi: 3.1.0
+info:
+  title: Artistic Swimming Analytics API
+  version: 1.0.0
+servers:
+  - url: /api/v1
+paths:
+  /analytics/dashboard:
+    get:
+      summary: Get user-specific dashboard aggregates
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard metrics and charting data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    type: string
+                  widgets:
+                    type: array
+                    items:
+                      type: object
+
+  /athletes/{athlete_id}/insights:
+    get:
+      summary: Retrieve AI predictions and recommendations for an athlete
+      parameters:
+        - in: path
+          name: athlete_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Predictive insights and coaching recommendations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projected_score:
+                    type: number
+                  recommendation_text:
+                    type: string
+        '503':
+          description: AI Service temporarily unavailable
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

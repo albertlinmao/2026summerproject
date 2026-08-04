@@ -1,6 +1,19 @@
 # Prompts to load data from Figure result
 
 <details>
+<summary><h2>2026-08-02</h2></summary>
+
+### Prompts
+
+/speckit.specify
+
+````
+
+</details>
+
+---
+
+<details>
 <summary><h2>2026-08-01</h2></summary>
 
 ### Prompts to ask AI chat for spec
@@ -16,7 +29,7 @@ Since I know you're already using **Angular**, **Python/FastAPI**, **Supabase (P
 
 ```text
                     +---------------------+
-                    |   Angular 20 SPA    |
+                    |   Angular 22 SPA    |
                     |---------------------|
                     | Dashboards          |
                     | Charts              |
@@ -60,7 +73,7 @@ Since I know you're already using **Angular**, **Python/FastAPI**, **Supabase (P
 
 ---
 
-## Frontend: Angular 20
+## Frontend: Angular 22
 
 This is still one of the best choices because you already know it.
 
@@ -415,3 +428,4 @@ For an MVP that delivers value quickly while leaving room to grow, I would prior
 This phased approach aligns well with Spec-Driven Development: define the domain and contracts first, build a stable analytics core, and then layer on advanced AI and visualization capabilities without disrupting the underlying architecture.
 
 </details>
+````

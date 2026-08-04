@@ -1,8 +1,9 @@
 <!--
 Sync Impact Report
-Version Change: 1.1.0 -> 1.1.1
-Modified Principles: Principle 13 (bumped Angular version to 22)
-Added Sections: N/A
+Version Change: 1.1.1 -> 1.2.0
+Modified Principles: None
+Added Sections: 
+- Principle 16: External User Management
 Removed Sections: N/A
 Templates requiring updates: 
 - .specify/templates/plan-template.md (✅ checked)
@@ -85,6 +86,9 @@ AI and ML features MUST be introduced iteratively, prioritizing stability and ex
 - **Phase 2 (Predictive)**: Linear regression, Random Forest, XGBoost for next score and ranking predictions.
 - **Phase 3 (LLM Coach)**: OpenAI-driven conversational analytics (e.g., explaining score plateaus and recommending practice focus).
 
+### 16. External User Management
+Identity, Roles (Athlete, Team Captain, Coach, Lead Coach, Parent, Club Admin, Club Owner), and Tenancy (Club) MUST be strictly delegated to the centralized Multi-Tenant User Service API (`001-multi-tenant-user-api`). The Analytics service and dashboards act solely as downstream consumers of these identities. Local databases MUST only store UUID references to these external identities, never duplicating profile or auth data.
+
 ## Governance
 
 This Constitution supersedes all other documentation and local practices. 
@@ -92,4 +96,4 @@ This Constitution supersedes all other documentation and local practices.
 - **Compliance**: All Pull Requests must be evaluated against these principles. Code reviews must explicitly check for adherence to Test First, API First, Data Integrity, and the Approved Technology Stack.
 - **Enforcement**: CI/CD pipelines will automatically enforce testing and API specification gates where technically feasible.
 
-**Version**: 1.1.1 | **Ratified**: 2026-07-30 | **Last Amended**: 2026-08-01
+**Version**: 1.2.0 | **Ratified**: 2026-07-30 | **Last Amended**: 2026-08-01
