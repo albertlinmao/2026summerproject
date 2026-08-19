@@ -1,13 +1,105 @@
 # Prompts to load data from Figure result
 
 <details>
-<summary><h2>2026-08-02</h2></summary>
+<summary><h2>2026-08-XX</h2></summary>
 
-### Prompts
+```text
 
-/speckit.specify
+```
 
-````
+</details>
+
+---
+
+<details>
+<summary><h2>2026-08-16</h2></summary>
+
+Prompt1:
+to enhance the dashboard with the following styles -
+
+Color PalettePrimary Tones: Deep navy blue and ocean teal to represent the pool and water.Backgrounds: Clean white or dark slate gray depending on indoor or outdoor coaching environments.Accent Colors: Bright coral or gold for high-priority alerts, top scores, and action buttons.Layout and StructureCard-Based Grid: Put video analysis, routine timers, and score breakdowns into separate, clean boxes.Sticky Navigation: Keep main controls like play, pause, and timestamp markers visible on the screen at all times.Whitespace: Leave empty space around elements so the screen does not look crowded in bright sunlight or under harsh pool lights.Typography and IconsFont Choice: Use clean sans-serif fonts like Inter or Roboto for fast reading of numbers and text.Font Sizing: Make scores and timers extra large so you can read them from a distance across the pool deck.Waterproof Icons: Use simple, filled vector icons for quick actions like video upload, audio cue, and timing marks.If you'd like, tell me:Do you prefer a light mode or dark mode layout?What are the top three features you use most on the deck?I can give you more specific design ideas.Woodmark Consulting5 Layout Tips for BI Dashboards - Woodmark ConsultingFeb 3, 2022 — Tip 3: Space is ace: inner padding is your secret weapon The biggest challenge in a dashboard is to visually 
+
+```text
++ Thought: Confirming Successful Build · 243ms
+I've successfully updated the dashboard with your requested styles:
+1. Color Palette: Added deep navy blue (--primary-navy) and ocean teal (--primary-teal) as main colors, with white/slate gray backgrounds. Added bright coral (--accent-coral) and gold (--accent-gold) for actions and highlights. Supports a basic light/dark mode preference via media query.
+2. Layout and Structure: Implemented a card-based grid layout with generous padding (--card-padding). Added a sticky navigation bar with primary controls and icons at the top of the screen.
+3. Typography and Icons: Integrated Google Fonts (Inter and Roboto). Made the scores and timers extra large (3.5rem to 3rem) for easy reading across the pool deck. Used simple filled icons (e.g. 🏷️, ⏱, ▶) for fast recognition.
+The changes have been applied to the global CSS (styles.css), the main application shell (shell.component.ts), and the specific widgets (video-correction, routine-choreography, coach-overview) to match the desired look. 
+The application builds successfully with the new styling integrated.
+```
+
+</details>
+
+---
+
+<details>
+<summary><h2>2026-08-05</h2></summary>
+TODO: 1. merge Data Model with User Management API and Meet result import pipeline
+TODO: 2. Merge the database design with sql\create_figures_table.sql and backend\supabase\migrations\20260804_initial_schema.sql to support the dashboard
+refine the design to use swimming score of firure and routine. The data model is documented in sql\create_figures_table.sql
+
+### Prompts:
+
+refactor the frontend to consume the /analytics/dashboard API via an @ngrx/signals store, and the UI components need to visualize the predictive data beyond just passing the heatmap payload.
+
+```text
+Here's what was accomplished:
+1. Created an NgRx Signals Store (frontend/src/app/store/dashboard.store.ts):
+- Introduced a new DashboardStore using @ngrx/signals (signalStore).
+- The store encapsulates the loading state, error state, and the teamHeatmap data containing our newly added predictive scores.
+- It cleanly delegates data fetching to the ApiService.
+2. Refactored ShellComponent (frontend/src/app/dashboards/shell/shell.component.ts):
+- Removed the direct API fetching logic.
+- Injected the new DashboardStore and tied the component's ngOnInit lifecycle to this.store.loadDashboard().
+- Wired the template to reactively read from the store's signals (store.isLoading(), store.error(), store.teamHeatmap()) and pass the payload down.
+3. Visualized Predictive Data (frontend/src/app/shared/widgets/coach-overview.component.ts):
+- Replaced the placeholder logic with a detailed "Predictions Panel" UI alongside the heatmap.
+- The component now iterates over the typed HeatmapData[] and displays figure_score, routine_score, and the prediction_score for each athlete.
+- Added clean, inline CSS styles to format the data into a readable grid/card layout so coaches can easily spot predicted outcomes based on the baseline logic.
+```
+
+### Prompts:
+
+enhance the frontend to enable routine choreography calculations or swimmer fitness tracking, Video Integration Card: Side-by-side clip uploader with timestamp tags for instant stroke or hybrid correction, similar to tools like Dartfish
+
+```text
+1. Video Correction Integration (video-correction.component.ts):
+- Developed a side-by-side Dartfish-style video analysis card.
+- Includes a mock video player workspace with an interactive progress bar.
+- Built a tagging system allowing coaches/swimmers to create timestamped correction tags.
+- Tags are dynamically categorized by type: Stroke (blue), Hybrid (green), and Timing (yellow), mapping visual markers onto the timeline to jump to specific points of improvement.
+2. Routine Choreography Calculator (routine-choreography.component.ts):
+- Created a dynamic choreography planning table powered by Angular signals (computed and signal).
+- Allows users to add routine elements (Acrobatic, Hybrid, Transition) by defining the element name and its Base Mark (Degree of Difficulty - DD).
+- Automatically calculates the Total Difficulty of the routine dynamically as elements are added or removed, aiding coaches in building highly competitive routines mathematically.
+3. Dashboard Layout Update (shell.component.ts):
+- Added an analysis-tools-grid layout to cleanly render both the new Routine Choreography tool and the Video Correction UI directly below the Coach Team Overview.
+These components are built cleanly as standalone Angular components leveraging the modern framework capabilities (Signals, standalone imports) and styled to feel like a premium coaching toolkit!
+```
+
+</details>
+
+---
+
+<details>
+<summary><h2>2026-08-04</h2></summary>
+
+```text
+I have verified the Phase 3 implementation based on the plan and tasks in specs/001-analytics-dashboard/.
+Here is the status of the Phase 3 (User Story 1 - Coach Team Analysis & Prediction) implementation:
+1. FastAPI Data Models & Endpoints
+- ✅ backend/src/models/aggregations.py: Present.
+- ✅ backend/src/api/dashboard.py: Implemented /analytics/dashboard endpoint for the Coach role, incorporating JWT token verification and using the coach service.
+- ✅ backend/src/services/analytics/coach_service.py: Contains the team overview aggregation logic. It also correctly implements T022 (predictive baseline average fallback logic), returning an age-group average baseline of 70.0 when an athlete has fewer than 5 historical records.
+2. Angular Dashboard & Widgets
+- ✅ frontend/src/app/shared/widgets/coach-overview.component.ts: Present.
+- ✅ frontend/src/app/shared/widgets/heatmap.component.ts: Present.
+- ✅ frontend/src/app/dashboards/shell/shell.component.ts: The unified Dashboard Shell is implemented. It conditionally loads the app-coach-overview widget based on the role and calls the /analytics/dashboard endpoint via ApiService.
+Notes on Completion Quality:
+While the tasks are marked as complete [x] in tasks.md, T021 (Integrate Dashboard Shell with backend API and NgRx Signals store) currently utilizes a basic fetch/then promise on the ApiService directly inside shell.component.ts rather than a full NgRx Signals store integration. It effectively fulfills the functional requirement for the Coach view, but may need refinement in Phase 7 for better state management.
+Overall, the foundational artifacts and logical pathways for Phase 3 are successfully in place!
+```
 
 </details>
 
@@ -19,6 +111,7 @@
 ### Prompts to ask AI chat for spec
 
 **Prompt:**
+
 > I have imported Artistic swimming event figures and routines score to SuperBase progresSQL db, I want to build a dashboard for swimmers and coach to track progress and predict improvement, and support long-term athlete development. What kind frameworks I should use to build the system?
 
 #### ChatGPT Response
@@ -92,6 +185,7 @@ Recommended libraries:
 
 I recommend **Apache ECharts** because coaches will want interactive visualizations.
 Examples include:
+
 - Progress curves
 - Figure radar charts
 - Ranking history
@@ -128,6 +222,7 @@ app/
 ## Database
 
 Since you already have Supabase PostgreSQL, use:
+
 - Views
 - Materialized Views
 - Stored Procedures
@@ -137,7 +232,7 @@ Since you already have Supabase PostgreSQL, use:
 
 For analytics:
 `Competition Results` → `Daily Aggregation` → `Materialized Views` → `Dashboard`
-*(This avoids recalculating expensive statistics on every request)*
+_(This avoids recalculating expensive statistics on every request)_
 
 ---
 
@@ -146,23 +241,28 @@ For analytics:
 This is where the application becomes truly valuable. Start simple.
 
 ### Phase 1: Statistics
+
 - Rolling Average
 - Exponential Moving Average
 - Percentile
 - Standard deviation
 - Consistency Score
-*(These often provide highly actionable insights without requiring complex models)*
+  _(These often provide highly actionable insights without requiring complex models)_
 
 ### Phase 2: Predictive Models
+
 `Next Figure Score` → `Linear Regression` → `Random Forest` → `XGBoost`
 Predict:
+
 - next competition score
 - expected ranking
 - qualification probability
 - probability of achieving personal best
 
 ### Phase 3: LLM Coach
+
 Example output:
+
 > Sophie improved her Barracuda from 58.2 to 63.7 during the last 5 meets. Her consistency increased by 17%. Her weakest figures remain:
 > • Knight
 > • Walkover
@@ -183,13 +283,15 @@ Every dashboard widget should use this shared service.
 ## AI Layer
 
 Eventually add an OpenAI coaching assistant. Example prompt:
-> *Explain why the athlete's figure scores plateaued despite higher difficulty, citing consistency, execution, and historical trends.*
+
+> _Explain why the athlete's figure scores plateaued despite higher difficulty, citing consistency, execution, and historical trends._
 
 ---
 
 ## Dashboard Pages
 
 ### Swimmer Dashboard
+
 - Personal Bests
 - Current Ranking
 - Figure & Routine Trends
@@ -200,6 +302,7 @@ Eventually add an OpenAI coaching assistant. Example prompt:
 - Upcoming Meets
 
 ### Coach Dashboard
+
 - Entire Team Overview
 - Most Improved Athletes
 - Athletes at Risk of Plateauing
@@ -209,7 +312,9 @@ Eventually add an OpenAI coaching assistant. Example prompt:
 - Qualification Predictions
 
 ### Parent Dashboard
+
 Simplified metrics:
+
 - Progress over time
 - Coach comments
 - Goal tracking
@@ -217,6 +322,7 @@ Simplified metrics:
 - Videos (future)
 
 ### Club Dashboard
+
 - Club Rankings
 - Medal Counts
 - Average Scores
@@ -228,6 +334,7 @@ Simplified metrics:
 ---
 
 ## Visualization Library
+
 I recommend **Apache ECharts** because it supports virtually every chart you'll need (Line charts, Radar charts, Heat maps, Sankey diagrams, Box plots, Scatter plots, Geographic maps, etc.).
 
 ---
@@ -245,6 +352,7 @@ Supabase
         │
 Redis
 ```
+
 For an MVP, Cloudflare Pages (frontend) and a lightweight FastAPI deployment work well, with Supabase providing PostgreSQL, authentication, and storage.
 
 ---
@@ -272,7 +380,8 @@ To build a full-stack performance dashboard for **Artistic Swimming**, you will 
 
 ## 1. Primary Full-Stack Web Framework
 
-### **Next.js (React / TypeScript)** — *Recommended*
+### **Next.js (React / TypeScript)** — _Recommended_
+
 - **Why:** Next.js is deeply integrated with Supabase. It handles SSR, static generation for fast dashboard loads, and secure API routes.
 - **Role-Based Access:** Enforce distinct UX views for **Swimmers** vs. **Coaches** using **Supabase RLS** combined with Next.js middleware.
 - **Alternative:** **Remix / React Router v7** or **SvelteKit** if you prefer lighter client bundles.
@@ -286,10 +395,12 @@ To build a full-stack performance dashboard for **Artistic Swimming**, you will 
 ## 3. Analytics & Predictive Modeling Engine
 
 ### **Option A: Embedded Python Microservice (Best for Advanced ML)**
+
 - **Stack:** **FastAPI (Python)** + **scikit-learn** / **Prophet** / **PyTorch**
 - **Why:** Python handles predictive modeling, statistical regression, and routine diff analysis.
 
 ### **Option B: Supabase Edge Functions + SQL Views (Lightweight Option)**
+
 - **Stack:** **Deno / TypeScript Edge Functions** + **Postgres Window Functions**
 - **Why:** Computations like linear trendlines and moving averages can be directly computed via PostgreSQL materialized views without a separate Python service.
 
@@ -319,6 +430,7 @@ To build a full-stack performance dashboard for **Artistic Swimming**, you will 
 ```
 
 ## Domain Features to Plan For
+
 1. **Figure vs. Routine Decomposition:** Track figure scores individually and compare them with technical routine scores.
 2. **LTAD Growth & Benchmark Mapping:** Overlay swimmer trajectories onto World Aquatics age-group benchmark curves.
 3. **Judges' Score Variance Tracker:** Analyze score variations across judges to detect biased scoring patterns.
@@ -335,66 +447,79 @@ To build a full-stack performance dashboard for **Artistic Swimming**, you will 
 Here is a collection of master prompts that you can use with AI generation tools to scaffold the project properly:
 
 #### 1. Master Product Prompt
+
 > Build a production-quality, cloud-native Artistic Swimming Analytics Platform that allows swimmers, coaches, clubs, and judges to analyze Figure and Routine competition results over time.
 > The system shall ingest official meet result files (PDF, CSV, Excel), normalize them into a relational data model, calculate rankings and statistics, and present interactive dashboards.
 > The architecture must follow Spec-Driven Development using SpecKit Constitution, API-first development, test-first implementation, OpenAPI contracts, CI validation, and domain-driven design.
 
 #### 2. Product Vision Prompt
+
 > Create a Product Requirements Document (PRD) for an Artistic Swimming Dashboard.
 > Primary users: Swimmers, Parents, Coaches, Club administrators, Judges, Competition organizers.
 > Goals: Track athlete progress, analyze figure/routine scores, compare competitions, predict athlete improvement, rank swimmers, benchmark rankings, and support long-term athlete development.
 
 #### 3. Functional Requirements Prompt
+
 > Generate detailed functional requirements.
 > Modules: Authentication, Athlete Management, Club Management, Competition Management, Meet Import, Figure Results, Routine Results, Judge Analysis, Ranking Engine, Dashboard, Statistics, Trend Analysis, Goal Tracking, Coach Workspace, Athlete Workspace, Parent View, Administration.
 > Each module should include: Actors, Use cases, Business rules, Acceptance criteria, API requirements, and Security requirements.
 
 #### 4. Domain Model Prompt
+
 > Design a normalized domain model.
 > Entities include: Club, Coach, Athlete, Competition, Event, Meet, Session, AgeGroup, Figure, Routine, RoutineElement, Judge, Score, Penalty, Ranking, Season, Qualification, Award.
 > Include relationships, primary/foreign keys, aggregate roots, and DDD boundaries.
 
 #### 5. Figure Analytics Prompt
+
 > Design a complete Figure Analytics dashboard.
 > Support: Figure history, Figure averages, Difficulty factors, Judge consistency, Percentile ranking, Provincial ranking, National ranking, Personal best, Trend over time.
 > Visualizations: Radar charts, Trend lines, Box plots, Heat maps, Percentile distributions.
 > Filtering: Season, Competition, Age group, Figure, Club, Coach.
 
 #### 6. Routine Analytics Prompt
+
 > Design an Artistic Swimming Routine dashboard.
 > Track: Technical Routine, Free Routine, Team, Duet, Solo, Acrobatic Routine.
 > Metrics: Difficulty, Execution, Artistic Impression, Synchronization, Coach comments, Penalty history.
 > Visualizations: Score breakdown, Trend, Waterfall, Judge comparison, Execution consistency.
 
 #### 7. Ranking Engine Prompt
+
 > Design a ranking engine.
 > Support rankings by: Club, Province, State, National, International, Season, Competition, Age Group.
 > Ranking types: Overall, Figure, Routine, Technical, Free.
 > Support: Best score, Average score, Rolling average, Weighted ranking, Official ranking. Include tie-breaking rules.
 
 #### 8. Dashboard UX Prompt
+
 > Design an Angular dashboard optimized for coaches.
 > Features: Dark mode, Responsive, Mobile friendly.
 > Widgets: Top swimmers, Most improved athletes, Upcoming competitions, Training goals, Recent competitions, Figure trends, Routine trends, Rank changes, Coach alerts.
 
 #### 9. AI Features Prompt
+
 > Design AI-powered coaching features.
 > Capabilities: Summarize athlete progress, Identify weakest figures, Predict next competition score, Recommend practice priorities, Generate coach reports, Estimate qualification probability, Detect judging anomalies. Use explainable AI.
 
 #### 10. PDF Import Prompt
+
 > Design a PDF ingestion pipeline.
 > Support importing official Artistic Swimming result PDFs.
 > Automatically extract: Competition, Athlete, Club, Figure, Routine, Judge, Score, Penalty, Rank.
 > Validate imported data, prevent duplicates, track import history, allow manual corrections, and produce normalized database records.
 
 #### 11. Analytics Prompt
+
 > Design analytical dashboards.
 > Metrics include: Average score, Median, Percentile, Best score, Worst score, Consistency, Improvement, Moving average, Season average.
 > Support: Coach dashboard, Athlete dashboard, Club dashboard, Provincial dashboard.
 
 #### 12. SpecKit Constitution Prompt (Recommended)
+
 > Generate a SpecKit Constitution for the Artistic Swimming Analytics Platform.
 > Principles:
+>
 > 1. API First (Every feature begins with OpenAPI spec)
 > 2. Domain First (Business rules before UI)
 > 3. Test First (Unit, integration, contract, e2e)
@@ -409,6 +534,7 @@ Here is a collection of master prompts that you can use with AI generation tools
 > 12. CI/CD (No API spec/tests -> No Merge)
 
 #### 13. Future Roadmap Prompt
+
 > Design the platform to support future features.
 > Planned modules: Video analysis, Underwater camera synchronization, AI movement scoring, Routine choreography planner, Training planner, Wearable integration, Olympic qualification tracking.
 
@@ -428,4 +554,3 @@ For an MVP that delivers value quickly while leaving room to grow, I would prior
 This phased approach aligns well with Spec-Driven Development: define the domain and contracts first, build a stable analytics core, and then layer on advanced AI and visualization capabilities without disrupting the underlying architecture.
 
 </details>
-````

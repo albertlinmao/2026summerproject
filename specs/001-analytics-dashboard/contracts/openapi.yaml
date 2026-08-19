@@ -1,0 +1,218 @@
+openapi: 3.0.3
+info:
+  title: Artistic Swimming Analytics API
+  version: 1.0.0
+paths:
+  /analytics/dashboard:
+    get:
+      summary: Get role-based dashboard widgets and aggregations
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Dashboard data successfully retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+  /athletes/{athlete_id}/insights:
+    get:
+      summary: Get personalized ML predictions and AI Coach recommendations for an athlete
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: athlete_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Athlete insights retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+  /uploads/sign:
+    post:
+      summary: Request a presigned upload URL for a routine video (FR-007)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, mime_type, size_bytes, athlete_id]
+              properties:
+                filename:
+                  type: string
+                mime_type:
+                  type: string
+                size_bytes:
+                  type: integer
+                athlete_id:
+                  type: string
+                  format: uuid
+                  description: Athlete appearing in the video (family-access scope)
+      responses:
+        '200':
+          description: Presigned upload URL and storage object key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_url:
+                    type: string
+                  storage_path:
+                    type: string
+                  upload_id:
+                    type: string
+        '413':
+          description: File exceeds size limit
+        '403':
+          description: User not authorized to upload for this athlete/club
+  /uploads/finalize:
+    post:
+      summary: Finalize a completed video upload after client-side PUT (FR-007)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [upload_id, storage_path]
+              properties:
+                upload_id:
+                  type: string
+                storage_path:
+                  type: string
+      responses:
+        '200':
+          description: Upload verified and committed
+        '409':
+          description: Upload verification failed (size/type mismatch)
+  /videos/{video_id}/markers:
+    get:
+      summary: List timestamp markers for a video (FR-007)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: video_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Video markers retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VideoMarker'
+    post:
+      summary: Create a timestamp marker on a video (FR-007)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: video_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VideoMarkerInput'
+      responses:
+        '201':
+          description: Marker created
+        '403':
+          description: User not authorized for this video's club
+  /routines/timers:
+    get:
+      summary: List saved routine timer configurations (FR-008)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Routine timer configurations retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    title:
+                      type: string
+                    duration_seconds:
+                      type: number
+    post:
+      summary: Save a routine timer configuration (FR-008)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [duration_seconds]
+              properties:
+                title:
+                  type: string
+                duration_seconds:
+                  type: number
+      responses:
+        '201':
+          description: Timer configuration saved
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    VideoMarker:
+      type: object
+      properties:
+        id:
+          type: string
+        video_id:
+          type: string
+        time_offset:
+          type: number
+        marker_type:
+          type: string
+          enum: [audio_cue, figure, timing_mark]
+        figure_id:
+          type: string
+        label:
+          type: string
+    VideoMarkerInput:
+      type: object
+      required: [time_offset, marker_type]
+      properties:
+        time_offset:
+          type: number
+        marker_type:
+          type: string
+          enum: [audio_cue, figure, timing_mark]
+        figure_id:
+          type: string
+        label:
+          type: string

@@ -1,0 +1,17 @@
+# Node / Angular
+node_modules/
+dist/
+build/
+*.log
+.env*
+coverage/
+.angular/
+
+# Python / FastAPI
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/

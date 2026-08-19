@@ -6,6 +6,22 @@
 
 ## Clarifications
 
+### Session 2026-08-19
+- Q: What is the video retention policy for uploaded routine videos? → A: Option C (Auto-delete after 90 days, competition season retention).
+- Q: Who can access uploaded routine videos? → A: Option D (Athlete, their coaches, and parents — family access).
+- Q: What do timestamp markers do during playback? → A: Option A (Click-to-seek plus audio tone playback for audio_cue markers).
+- Q: What alert should a routine timer give when the countdown reaches zero? → A: Option A (Visual flash plus audible beep).
+
+### Session 2026-08-18
+- Q: Should the dashboard use a light or dark mode layout? → A: Option A (Both modes, user-selectable toggle, persisted per user).
+- Q: Should video analysis and routine timers be added as dashboard features? → A: Option A (Yes, add both as new dashboard widgets; they become in-scope).
+- Q: Which features need extra-large, distance-readable typography? → A: Option D (All key metrics — team analysis/predictions, video/timers/scores, personal progress/AI coach).
+- Q: What contrast/accessibility standard should the design adhere to? → A: Option A (WCAG 2.1 AA, 4.5:1 for normal text).
+
+### Session 2026-08-09
+- Q: How should the dashboard respond if the external `001-multi-tenant-user-api` is unreachable during session validation? → A: Option C (Display a full-page critical error with a retry button within the app).
+- Q: How frequently should the materialized views for daily score aggregations be refreshed to balance performance and freshness? → A: Option C (On-demand refresh when first accessed, with caching).
+
 ### Session 2026-08-01
 - Q: How should the system handle users who belong to multiple clubs or have multiple roles? → A: Unified View (Merge permissions into a single dashboard view with all available widgets).
 - Q: How does the system handle predictive insights for a new swimmer with insufficient historical data? → A: Baseline Average (Use club or age-group averages as a baseline for early predictions).
@@ -56,9 +72,11 @@ Club administrators need to monitor club rankings, average scores, coach effecti
 
 ### Edge Cases & Failure Handling
 
+- **User Service Unavailability**: If the `001-multi-tenant-user-api` is unreachable during session validation, the application MUST display a full-page critical error with a retry button within the app.
 - **Multiple Roles/Clubs**: If a user possesses multiple roles (e.g., Coach and Parent) or belongs to multiple clubs, the system MUST merge permissions into a single, unified dashboard view containing all widgets authorized for their combined roles.
 - **Insufficient Historical Data**: For new swimmers lacking sufficient historical data to generate individualized predictive models (e.g., fewer than 5 records), the system MUST use club or age-group averages as a baseline for early predictions.
 - **AI Service Unavailability**: If the external AI coach service (OpenAI) times out or is unavailable, the AI recommendation widget MUST display a generic error message ("AI temporarily unavailable") rather than hiding the section or falling back to statistics.
+- **Video Access Control**: Video access is limited to the filmed athlete, their coaches, and their parents; attempts to access a video outside this scope MUST be denied (403). This requires linking each video to the athlete(s) appearing in it.
 
 ## Requirements
 
@@ -68,8 +86,10 @@ Club administrators need to monitor club rankings, average scores, coach effecti
 - **FR-002**: System MUST visualize historical score distributions, ranking histories, and figure radar charts.
 - **FR-003**: System MUST provide predictive analytics indicating a swimmer's expected ranking and qualification probability based on historical data.
 - **FR-004**: System MUST surface natural language explanations (AI coach) detailing why a swimmer's score changed and providing practice focus recommendations.
-- **FR-005**: System MUST aggregate raw competition results into daily summaries for performant dashboard rendering.
+- **FR-005**: System MUST aggregate raw competition results into daily summaries for performant dashboard rendering. Materialized views for these aggregations MUST be refreshed on-demand when first accessed, and then cached.
 - **FR-006**: System MUST enforce data privacy, ensuring users only see data they are authorized to access based on their role and club affiliation (as resolved via the Multi-Tenant User Service API).
+- **FR-007**: System MUST provide a video analysis widget allowing upload of routine videos, frame-by-frame playback, and timestamp markers linked to figure/routine scoring moments. Uploaded videos MUST be automatically deleted 90 days after upload (competition season retention). Access to a video MUST be restricted to the filmed athlete, their coaches, and their parents (family access). Markers MUST support click-to-seek during playback; `audio_cue` markers MUST additionally emit an audio tone when reached during playback.
+- **FR-008**: System MUST provide routine timer widgets (e.g., routine duration countdown) with start/pause controls for use on the pool deck. When a countdown reaches zero, the timer MUST alert with both a visual flash and an audible beep.
 
 ### Key Entities
 
@@ -79,6 +99,16 @@ Club administrators need to monitor club rankings, average scores, coach effecti
 - **Competition Result**: The core factual data point (figure score, routine score) used for aggregation.
 - **Predictive Insight**: Generated forecasts (e.g., next score, plateau risk) associated with an athlete.
 - **Coaching Recommendation**: AI-generated natural language feedback and practice priorities.
+
+### Design System & UX Requirements
+
+- **DR-001**: System MUST support both light and dark themes, user-selectable via a persisted toggle (per user), with no automatic environment-based switching.
+- **DR-002**: Color palette MUST use deep navy blue and ocean teal as primary tones, clean white (light mode) or dark slate gray (dark mode) backgrounds, and bright coral or gold for high-priority alerts, top scores, and action buttons.
+- **DR-003**: Dashboard layout MUST use a card-based grid, with video analysis, routine timers, and score breakdowns in separate cards with generous whitespace/padding so content remains readable in bright sunlight or under harsh pool lights.
+- **DR-004**: Main controls (play, pause, timestamp markers) MUST remain visible on screen at all times via sticky navigation.
+- **DR-005**: Typography MUST use clean sans-serif fonts (Inter or Roboto) for fast reading of numbers and text; scores and timers MUST be extra large so they are readable from a distance across the pool deck. Extra-large typography applies to all key metrics, including team analysis/predictions, video/timers/scores, and personal progress/AI coach widgets.
+- **DR-006**: Icons MUST be simple, filled vector icons for quick actions such as video upload, audio cue, and timing marks.
+- **DR-007**: All text MUST meet WCAG 2.1 AA contrast ratios (4.5:1 for normal text, 3:1 for large text) in both light and dark themes.
 
 ## Success Criteria
 

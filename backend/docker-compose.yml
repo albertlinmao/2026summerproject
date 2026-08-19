@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  # Supabase local stack usually relies on the Supabase CLI (`supabase init`, `supabase start`).
+  # We will use the CLI for Supabase and just define Redis here if needed,
+  # or assume the developer will run `supabase start` which spins up its own compose stack.
+
+volumes:
+  redis_data:

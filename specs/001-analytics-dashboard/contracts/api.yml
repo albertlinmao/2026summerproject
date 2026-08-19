@@ -1,0 +1,107 @@
+openapi: 3.0.3
+info:
+  title: Artistic Swimming Analytics API
+  version: 1.0.0
+  description: Backend services for the Analytics Dashboard providing team insights, predictions, and aggregated competition data.
+paths:
+  /analytics/dashboard:
+    get:
+      summary: Get user dashboard overview
+      description: Returns unified dashboard widgets based on the user's role (Athlete, Coach, Admin). Merges permissions if multiple roles exist.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Dashboard layout and data payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardOverview'
+        '401':
+          description: Unauthorized (Identity API unreachable or invalid token)
+  /analytics/athletes/{athleteId}/prediction:
+    get:
+      summary: Get predictive insights for an athlete
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: athleteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Predictive score and plateau risk
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictiveInsight'
+  /analytics/athletes/{athleteId}/recommendation:
+    get:
+      summary: Get AI coaching recommendation
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: athleteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Natural language recommendation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachingRecommendation'
+        '503':
+          description: AI temporarily unavailable
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    DashboardOverview:
+      type: object
+      properties:
+        role_views:
+          type: array
+          items:
+            type: string
+        team_heatmap:
+          type: array
+          items:
+            $ref: '#/components/schemas/HeatmapData'
+    HeatmapData:
+      type: object
+      properties:
+        athlete_id:
+          type: string
+          format: uuid
+        figure_weaknesses:
+          type: object
+        prediction_score:
+          type: number
+        figure_score:
+          type: number
+        routine_score:
+          type: number
+    PredictiveInsight:
+      type: object
+      properties:
+        next_score_prediction:
+          type: number
+        plateau_risk:
+          type: boolean
+    CoachingRecommendation:
+      type: object
+      properties:
+        recommendation_text:
+          type: string
+        weakest_figure:
+          type: string

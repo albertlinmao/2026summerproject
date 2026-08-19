@@ -1,0 +1,141 @@
+/* Global Styles for Artistic Swimming Analytics Dashboard */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
+
+:root {
+  /* Color Palette - Light Mode Default */
+  --primary-navy: #0A2342;
+  --primary-teal: #178082;
+  --bg-color: #FFFFFF;
+  --surface-color: #F8F9FA;
+  --accent-coral: #FF6B6B;
+  --accent-gold: #FFD166;
+  --text-primary: #1A1A1A;
+  --text-secondary: #4A4A4A;
+  
+  /* Typography */
+  --font-main: 'Inter', sans-serif;
+  --font-data: 'Roboto', sans-serif;
+  
+  /* Layout & Spacing */
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --card-padding: var(--spacing-xl); /* Space is ace: inner padding */
+  --border-radius: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Color Palette - Dark Mode (Slate Gray) */
+    --bg-color: #1E2227;
+    --surface-color: #282C34;
+    --primary-navy: #183b6b;
+    --primary-teal: #21a8ab;
+    --text-primary: #F8F9FA;
+    --text-secondary: #ADB5BD;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-main);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+/* Card-Based Grid */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--spacing-xl);
+  padding: var(--spacing-xl);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.card {
+  background-color: var(--surface-color);
+  border-radius: var(--border-radius);
+  padding: var(--card-padding);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Sticky Navigation */
+.sticky-nav {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background-color: var(--primary-navy);
+  color: white;
+  padding: var(--spacing-md) var(--spacing-xl);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.sticky-nav .controls {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+/* Typography and Icons */
+.score-display, .timer-display {
+  font-family: var(--font-data);
+  font-size: 3.5rem; /* Extra large for distance reading */
+  font-weight: 700;
+  line-height: 1;
+  color: var(--primary-teal);
+}
+
+.alert-high {
+  color: var(--accent-coral);
+}
+
+/* Action Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  font-family: var(--font-main);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-primary {
+  background-color: var(--primary-teal);
+  color: white;
+}
+
+.btn-accent {
+  background-color: var(--accent-coral);
+  color: white;
+}
+
+.btn-icon {
+  /* Simple filled vector icons container */
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  padding: 0;
+  background-color: var(--surface-color);
+  color: var(--primary-navy);
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
