@@ -1,23 +1,23 @@
 -- T009 Core Tables
-CREATE TABLE as_club (
+CREATE TABLE if not exists as_club (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL
 );
 
-CREATE TABLE as_coach (
+CREATE TABLE if not exists as_coach (
     id UUID PRIMARY KEY,
     club_id UUID REFERENCES as_club(id),
     name TEXT NOT NULL
 );
 
-CREATE TABLE as_athlete (
+CREATE TABLE if not exists as_athlete (
     id UUID PRIMARY KEY,
     club_id UUID REFERENCES as_club(id),
     name TEXT NOT NULL
 );
 
 -- T010 Competition Result with RLS
-CREATE TABLE as_competition_result (
+CREATE TABLE if not exists as_competition_result (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     athlete_id UUID REFERENCES as_athlete(id),
     score DECIMAL(5,2) NOT NULL,
