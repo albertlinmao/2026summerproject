@@ -46,7 +46,7 @@ CREATE POLICY "Users can view videos in their club" ON as_video_uploads
 CREATE POLICY "Family can view athlete's videos" ON as_video_uploads
   FOR SELECT USING (
     athlete_id = auth.uid()  -- as_athlete themselves
-    OR athlete_id IN (SELECT athlete_id FROM athlete_parent WHERE parent_id = auth.uid())  -- parents
+    OR athlete_id IN (SELECT jsonb_array_elements_text(coalesce(auth.jwt()->'athlete_ids', '[]'::jsonb))::uuid)  -- parents
   );
 CREATE POLICY "Coaches can view their athletes' videos" ON as_video_uploads
   FOR SELECT USING (
@@ -68,7 +68,7 @@ CREATE POLICY "Users can view markers for accessible videos" ON as_video_markers
         club_id = (SELECT club_id FROM as_coach WHERE id = auth.uid())
         OR club_id = (SELECT club_id FROM as_athlete WHERE id = auth.uid())
         OR athlete_id = auth.uid()
-        OR athlete_id IN (SELECT athlete_id FROM athlete_parent WHERE parent_id = auth.uid())
+        OR athlete_id IN (SELECT jsonb_array_elements_text(coalesce(auth.jwt()->'athlete_ids', '[]'::jsonb))::uuid)
         OR athlete_id IN (SELECT id FROM as_athlete WHERE coach_id = auth.uid())
     )
   );
