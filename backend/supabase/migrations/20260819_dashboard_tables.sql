@@ -1,6 +1,9 @@
 -- Dashboard-specific tables migration
 -- Creates tables for as_daily_aggregations (materialized view), as_predictive_insights, as_coaching_recommendations, as_competition_results_browser_widgets
 
+-- Ensure figure_score exists before creating the materialized view
+ALTER TABLE as_meet_figure_result ADD COLUMN IF NOT EXISTS figure_score NUMERIC;
+
 -- Daily Aggregations Materialized View (for dashboard performance)
 CREATE MATERIALIZED VIEW IF NOT EXISTS as_daily_aggregations AS
 SELECT 
