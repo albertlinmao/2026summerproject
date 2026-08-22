@@ -11,6 +11,11 @@
 - Q: Who can access uploaded routine videos? → A: Option D (Athlete, their coaches, and parents — family access).
 - Q: What do timestamp markers do during playback? → A: Option A (Click-to-seek plus audio tone playback for audio_cue markers).
 - Q: What alert should a routine timer give when the countdown reaches zero? → A: Option A (Visual flash plus audible beep).
+- Q: What does "extendable board" mean for browsing competition results? → A: Option D (Dashboard widgets — modular widgets like leaderboards, score distributions, heatmaps that users can add/remove/resize).
+- Q: Which competition result types should the board display? → A: Option C (Both figures and routines with unified view and toggle/tabs).
+- Q: How should users filter and access competition results on the board? → A: All users can view; organized as treeview matching the swim-meets folder structure.
+- Q: Should the treeview also provide access to the original PDF files in swim-meets folder? → A: Option A (Yes, link to PDFs — tree nodes link to original summary/detailed PDFs for each meet/event).
+- Q: How should the treeview structure map to the swim-meets folder hierarchy? → A: Option A (Exact folder mirror — Year > Meet > Figure/Routine > PDF type matching filesystem).
 
 ### Session 2026-08-18
 - Q: Should the dashboard use a light or dark mode layout? → A: Option A (Both modes, user-selectable toggle, persisted per user).
@@ -70,6 +75,22 @@ Club administrators need to monitor club rankings, average scores, coach effecti
 
 ---
 
+### User Story 4 - Competition Results Browser (Priority: P2)
+
+Coaches, athletes, and club administrators need to browse historical competition results organized by the original meet structure, with direct access to source PDFs for verification and detailed review.
+
+**Why this priority**: The swim-meets folder contains the authoritative source data. Users need a navigable interface that mirrors the familiar folder hierarchy while providing database-driven results with PDF links.
+
+**Independent Test**: Can be fully tested by logging in as any role, adding the Competition Results Browser widget, navigating the treeview to a specific meet, and opening both the database results and the linked source PDF.
+
+**Acceptance Scenarios**:
+1. **Given** a user adds the Competition Results Browser widget, **When** they open it, **Then** they see a treeview matching the `swim-meets/` folder structure (Year > Meet > Figure/Routine > PDF type).
+2. **Given** a user navigates to a specific figure meet in the tree, **When** they select a figure event, **Then** they see the figure results from `as_meet_figure_result` and links to the Summary/Detailed PDFs.
+3. **Given** a user navigates to a routine meet in the tree, **When** they select a routine event, **Then** they see the routine results from `as_meet_routine_result` and links to the Summary/Detailed PDFs.
+4. **Given** a user clicks a PDF link in the tree, **When** the link opens, **Then** the original PDF file from the swim-meets folder is displayed.
+
+---
+
 ### Edge Cases & Failure Handling
 
 - **User Service Unavailability**: If the `001-multi-tenant-user-api` is unreachable during session validation, the application MUST display a full-page critical error with a retry button within the app.
@@ -90,6 +111,13 @@ Club administrators need to monitor club rankings, average scores, coach effecti
 - **FR-006**: System MUST enforce data privacy, ensuring users only see data they are authorized to access based on their role and club affiliation (as resolved via the Multi-Tenant User Service API).
 - **FR-007**: System MUST provide a video analysis widget allowing upload of routine videos, frame-by-frame playback, and timestamp markers linked to figure/routine scoring moments. Uploaded videos MUST be automatically deleted 90 days after upload (competition season retention). Access to a video MUST be restricted to the filmed athlete, their coaches, and their parents (family access). Markers MUST support click-to-seek during playback; `audio_cue` markers MUST additionally emit an audio tone when reached during playback.
 - **FR-008**: System MUST provide routine timer widgets (e.g., routine duration countdown) with start/pause controls for use on the pool deck. When a countdown reaches zero, the timer MUST alert with both a visual flash and an audible beep.
+- **FR-009**: System MUST provide an extendable Competition Results Browser as a dashboard widget. The browser MUST:
+  - Display a treeview mirroring the exact `swim-meets/` folder hierarchy (Year > Meet > Figure/Routine > PDF type).
+  - Support both figure and routine results with toggle/tabs between them.
+  - Link tree nodes to original source PDF files (Summary and Detailed) for each meet/event.
+  - Be accessible to all authenticated users (no club-scoping restriction on viewing).
+  - Be implemented as a modular dashboard widget that users can add/remove/resize alongside other widgets.
+  - Load result data from the Supabase tables (`as_meet_figure_result`, `as_meet_routine_result`) with PDF links resolved from the filesystem structure.
 
 ### Key Entities
 
@@ -99,6 +127,7 @@ Club administrators need to monitor club rankings, average scores, coach effecti
 - **Competition Result**: The core factual data point (figure score, routine score) used for aggregation.
 - **Predictive Insight**: Generated forecasts (e.g., next score, plateau risk) associated with an athlete.
 - **Coaching Recommendation**: AI-generated natural language feedback and practice priorities.
+- **Competition Results Browser Widget (FR-009)**: Modular dashboard widget providing a treeview browser over the `swim-meets/` folder hierarchy with database-backed results and PDF links.
 
 ### Design System & UX Requirements
 
@@ -118,6 +147,8 @@ Club administrators need to monitor club rankings, average scores, coach effecti
 - **SC-002**: Coaches can identify a swimmer's weakest figure and access a practice recommendation in 3 clicks or fewer.
 - **SC-003**: The predictive engine provides a next-competition score forecast for 100% of athletes who have at least 5 historical competition records.
 - **SC-004**: System supports simultaneous access by 1,000 users without degrading response times.
+- **SC-005**: Competition Results Browser treeview loads and renders the full swim-meets hierarchy in under 3 seconds.
+- **SC-006**: PDF links in the treeview open the correct source file within 1 second of click.
 
 ## Assumptions
 

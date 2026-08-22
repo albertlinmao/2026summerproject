@@ -1,0 +1,16 @@
+node_modules
+dist
+coverage
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.min.js
+*.min.css
+angular.json
+tsconfig*.json
+.eslintrc*
+.eslintignore
+.prettierrc
+.prettierignore
+jest.config.js
+proxy.conf.json

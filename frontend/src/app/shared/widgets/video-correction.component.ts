@@ -1,15 +1,15 @@
-import { Component, signal } from "@angular/core";
-import { CommonModule } from "@angular/common";
+import { Component, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
 
 interface VideoTag {
   id: number;
   timestamp: string;
   note: string;
-  type: "stroke" | "hybrid" | "timing";
+  type: 'stroke' | 'hybrid' | 'timing';
 }
 
 @Component({
-  selector: "app-video-correction",
+  selector: 'app-video-correction',
   standalone: true,
   imports: [CommonModule],
   template: `
@@ -25,13 +25,16 @@ interface VideoTag {
             <div class="play-icon">▶</div>
             <div class="progress-bar">
               <div class="progress" style="width: 35%"></div>
-              <div
-                class="tag-marker"
-                *ngFor="let tag of tags()"
-                [style.left]="getMarkerPosition(tag.timestamp)"
-              ></div>
+              @for (tag of tags(); track tag) {
+                <div class="tag-marker" [style.left]="getMarkerPosition(tag.timestamp)"></div>
+              }
             </div>
-            <div class="time-display timer-display" style="font-size: 1.5rem; position: absolute; bottom: 8px; right: 20px;">00:14 / 02:30</div>
+            <div
+              class="time-display timer-display"
+              style="font-size: 1.5rem; position: absolute; bottom: 8px; right: 20px;"
+            >
+              00:14 / 02:30
+            </div>
           </div>
         </div>
 
@@ -51,21 +54,20 @@ interface VideoTag {
             </select>
             <button
               class="btn btn-accent"
-              (click)="
-                addTag('00:14', noteInput.value, typeInput.value);
-                noteInput.value = ''
-              "
+              (click)="addTag('00:14', noteInput.value, typeInput.value); noteInput.value = ''"
             >
               <span class="icon">🏷️</span> <span> Tag &#64; 0:44 </span>
             </button>
           </div>
 
           <ul class="tag-list">
-            <li *ngFor="let tag of tags()" class="tag-item">
-              <span class="time-badge">{{ tag.timestamp }}</span>
-              <span class="type-badge" [ngClass]="tag.type">{{ tag.type }}</span>
-              <span class="note">{{ tag.note }}</span>
-            </li>
+            @for (tag of tags(); track tag) {
+              <li class="tag-item">
+                <span class="time-badge">{{ tag.timestamp }}</span>
+                <span class="type-badge" [ngClass]="tag.type">{{ tag.type }}</span>
+                <span class="note">{{ tag.note }}</span>
+              </li>
+            }
           </ul>
         </div>
       </div>
@@ -126,7 +128,7 @@ interface VideoTag {
         left: 20px;
         right: 20px;
         height: 8px;
-        background: rgba(255,255,255,0.2);
+        background: rgba(255, 255, 255, 0.2);
         border-radius: 4px;
       }
       .progress {
@@ -230,12 +232,12 @@ interface VideoTag {
 })
 export class VideoCorrectionComponent {
   tags = signal<VideoTag[]>([
-    { id: 1, timestamp: "00:05", note: "Late entry on hybrid", type: "timing" },
+    { id: 1, timestamp: '00:05', note: 'Late entry on hybrid', type: 'timing' },
     {
       id: 2,
-      timestamp: "01:12",
-      note: "Eggbeater height too low",
-      type: "stroke",
+      timestamp: '01:12',
+      note: 'Eggbeater height too low',
+      type: 'stroke',
     },
   ]);
 
@@ -247,14 +249,14 @@ export class VideoCorrectionComponent {
         id: Date.now(),
         timestamp,
         note,
-        type: type as "stroke" | "hybrid" | "timing",
+        type: type as 'stroke' | 'hybrid' | 'timing',
       },
     ]);
   }
 
   getMarkerPosition(timeStr: string): string {
     // Mock calculation for visual marker position on the progress bar
-    const parts = timeStr.split(":");
+    const parts = timeStr.split(':');
     const seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
     const totalSeconds = 150; // 02:30
     return `${(seconds / totalSeconds) * 100}%`;

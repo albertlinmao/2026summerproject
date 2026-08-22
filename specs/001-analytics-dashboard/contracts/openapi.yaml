@@ -180,6 +180,147 @@ paths:
       responses:
         '201':
           description: Timer configuration saved
+  /results/tree:
+    get:
+      summary: Get competition results browser tree structure (FR-009)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Tree structure with nodes for year/meet/figure-routine/pdf
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  year:
+                    type: string
+                  meets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ResultsMeetNode'
+        '404':
+          description: swim-meets folder not found
+  /results/figure/{meet_id}:
+    get:
+      summary: Get figure results for a meet (FR-009)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: meet_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Paginated figure results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FigureResult'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '404':
+          description: Meet not found
+  /results/routine/{meet_id}:
+    get:
+      summary: Get routine results for a meet (FR-009)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: meet_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Paginated routine results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RoutineResult'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '404':
+          description: Meet not found
+  /results/pdf/{year}/{meet}/{type}/{filename}:
+    get:
+      summary: Serve source PDF file for a meet/event (FR-009)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: meet
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [figure, routine]
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: PDF file stream
+          content:
+            application/pdf: {}
+        '404':
+          description: PDF file not found
+        '403':
+          description: Path traversal attempt blocked
 components:
   securitySchemes:
     BearerAuth:
@@ -216,3 +357,111 @@ components:
           type: string
         label:
           type: string
+    ResultsMeetNode:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+        meet_id:
+          type: string
+          format: uuid
+        has_figure_results:
+          type: boolean
+        has_routine_results:
+          type: boolean
+        pdf_summary_path:
+          type: string
+        pdf_detailed_path:
+          type: string
+        figure_events:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                enum: [Summary, Detailed]
+              filename:
+                type: string
+              path:
+                type: string
+        routine_events:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                enum: [Summary, Detailed]
+              filename:
+                type: string
+              path:
+                type: string
+    FigureResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rank:
+          type: string
+        draw:
+          type: string
+        team_code:
+          type: string
+        team_name:
+          type: string
+        athlete_name:
+          type: string
+        athlete_birth_year:
+          type: integer
+        penalty:
+          type: string
+        total_score:
+          type: number
+        figure_score:
+          type: number
+        figure_scores:
+          type: object
+        source_file:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    RoutineResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rank:
+          type: string
+        draw:
+          type: string
+        team_code:
+          type: string
+        team_name:
+          type: string
+        team_athletes:
+          type: object
+        total_difficulty:
+          type: object
+        routine_scores:
+          type: object
+        element_total:
+          type: number
+        artisticimpression_total:
+          type: number
+        synchronization_total:
+          type: number
+        routine_score:
+          type: number
+        source_file:
+          type: string
+        created_at:
+          type: string
+          format: date-time

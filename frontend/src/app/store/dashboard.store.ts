@@ -1,158 +1,226 @@
-import { inject } from '@angular/core';
-import { signalStore, withState, withMethods, patchState } from '@ngrx/signals';
-import { ApiService } from '../shared/api.service';
+import { signal, computed, effect } from '@angular/core';
+import { Injectable } from '@angular/core';
 
-export interface HeatmapData {
-  athlete_id: string;
-  figure_weaknesses: Record<string, number>;
-  prediction_score: number;
-  figure_score: number;
-  routine_score: number;
-}
+// Widget types
+export type WidgetType =
+  | 'team-overview'
+  | 'figure-heatmap'
+  | 'prediction'
+  | 'ai-recommendation'
+  | 'personal-progress'
+  | 'personal-bests'
+  | 'club-overview'
+  | 'coach-effectiveness'
+  | 'athlete-retention'
+  | 'video-analysis'
+  | 'routine-timer'
+  | 'results-browser';
 
-export interface PersonalBest {
-  figure_name: string;
-  score: number;
-  date: string;
-}
-
-export interface TrendPoint {
-  date: string;
-  score: number;
-}
-
-export interface FigureScore {
-  figure_name: string;
-  score: number;
-  max_score: number;
-}
-
-export interface CoachRecommendation {
-  recommendation_text: string;
-  weakest_figure: string;
-}
-
-export interface SwimmerOverviewData {
-  personalBests: PersonalBest[];
-  currentRanking: number;
-  trendData: TrendPoint[];
-}
-
-export interface VideoItem {
+export interface WidgetConfig {
   id: string;
-  storage_path: string;
-  filename: string;
-  duration_seconds: number;
-  uploaded_at: string;
+  type: WidgetType;
+  title: string;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  isVisible: boolean;
+  config?: Record<string, any>;
 }
 
-export interface TimerConfig {
-  id: string;
-  label: string;
-  duration_seconds: number;
+export interface UserPreferences {
+  themeMode: 'light' | 'dark' | 'system';
+  compactMode: boolean;
+  autoRefresh: boolean;
+  refreshInterval: number;
 }
 
 export interface DashboardState {
-  teamHeatmap: HeatmapData[];
+  widgets: WidgetConfig[];
+  activeDashboard: string;
+  userPreferences: UserPreferences;
   isLoading: boolean;
   error: string | null;
-
-  swimmerOverview: SwimmerOverviewData;
-  radarData: FigureScore[];
-  aiRecommendation: CoachRecommendation | null;
-  swimmerInsightsLoaded: boolean;
-
-  videoList: VideoItem[];
-  timerConfigs: TimerConfig[];
 }
 
+// Initial state
 const initialState: DashboardState = {
-  teamHeatmap: [],
+  widgets: [],
+  activeDashboard: 'coach',
+  userPreferences: {
+    themeMode: 'system',
+    compactMode: false,
+    autoRefresh: true,
+    refreshInterval: 300000, // 5 minutes
+  },
   isLoading: false,
   error: null,
-
-  swimmerOverview: { personalBests: [], currentRanking: 0, trendData: [] },
-  radarData: [],
-  aiRecommendation: null,
-  swimmerInsightsLoaded: false,
-
-  videoList: [],
-  timerConfigs: [],
 };
 
-export const DashboardStore = signalStore(
-  { providedIn: 'root' },
-  withState(initialState),
-  withMethods((store, apiService = inject(ApiService)) => ({
-    async loadDashboard() {
-      patchState(store, { isLoading: true });
-      try {
-        const res = await apiService.get('/analytics/dashboard');
-        const data = await res.json();
-        patchState(store, {
-          teamHeatmap: data.team_heatmap || [],
-          isLoading: false,
-        });
-      } catch (err) {
-        patchState(store, {
-          isLoading: false,
-          error: 'Failed to load dashboard data',
-        });
+// Store using Angular Signals
+@Injectable({
+  providedIn: 'root',
+})
+export class DashboardStore {
+  // Private state signals
+  private _widgets = signal<WidgetConfig[]>(initialState.widgets);
+  private _activeDashboard = signal<string>(initialState.activeDashboard);
+  private _userPreferences = signal<UserPreferences>(initialState.userPreferences);
+  private _isLoading = signal<boolean>(initialState.isLoading);
+  private _error = signal<string | null>(initialState.error);
+
+  // Public computed selectors
+  readonly widgets = computed(() => this._widgets());
+  readonly activeDashboard = computed(() => this._activeDashboard());
+  readonly userPreferences = computed(() => this._userPreferences());
+  readonly isLoading = computed(() => this._isLoading());
+  readonly error = computed(() => this._error());
+
+  // Visible widgets for current dashboard
+  readonly visibleWidgets = computed(() => this._widgets().filter((w) => w.isVisible));
+
+  // Widgets by type
+  readonly widgetsByType = computed(() => {
+    const grouped: Record<WidgetType, WidgetConfig[]> = {} as any;
+    for (const widget of this._widgets()) {
+      if (!grouped[widget.type]) {
+        grouped[widget.type] = [];
       }
-    },
+      grouped[widget.type].push(widget);
+    }
+    return grouped;
+  });
 
-    async loadSwimmerData(athleteId: string) {
-      try {
-        const res = await apiService.get(`/athletes/${athleteId}/insights`);
-        const data = await res.json();
+  // Actions
+  setWidgets(widgets: WidgetConfig[]): void {
+    this._widgets.set(widgets);
+  }
 
-        patchState(store, {
-          swimmerOverview: {
-            personalBests: data.personal_bests || [],
-            currentRanking: data.current_ranking ?? 0,
-            trendData: data.trend_data || [],
-          },
-          radarData: data.figure_scores || [],
-          aiRecommendation: data.ai_recommendation ?? null,
-          swimmerInsightsLoaded: true,
-        });
-      } catch (err) {
-        patchState(store, {
-          aiRecommendation: {
-            recommendation_text: 'AI temporarily unavailable',
-            weakest_figure: '',
-          },
-          swimmerInsightsLoaded: true,
-        });
+  addWidget(widget: WidgetConfig): void {
+    this._widgets.update((current) => [...current, widget]);
+  }
+
+  removeWidget(widgetId: string): void {
+    this._widgets.update((current) => current.filter((w) => w.id !== widgetId));
+  }
+
+  updateWidget(widgetId: string, updates: Partial<WidgetConfig>): void {
+    this._widgets.update((current) =>
+      current.map((w) => (w.id === widgetId ? { ...w, ...updates } : w))
+    );
+  }
+
+  setActiveDashboard(dashboard: string): void {
+    this._activeDashboard.set(dashboard);
+  }
+
+  setUserPreferences(preferences: Partial<UserPreferences>): void {
+    this._userPreferences.update((current) => ({ ...current, ...preferences }));
+  }
+
+  setLoading(isLoading: boolean): void {
+    this._isLoading.set(isLoading);
+  }
+
+  setError(error: string | null): void {
+    this._error.set(error);
+  }
+
+  clearError(): void {
+    this._error.set(null);
+  }
+
+  // Persist user preferences to localStorage
+  constructor() {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('dashboard-preferences');
+      if (stored) {
+        try {
+          const prefs = JSON.parse(stored);
+          this._userPreferences.set({ ...initialState.userPreferences, ...prefs });
+        } catch {
+          // Ignore parse errors
+        }
       }
-    },
 
-    async loadVideoList() {
-      try {
-        const res = await apiService.get('/videos');
-        const data = await res.json();
-        patchState(store, { videoList: data.videos || [] });
-      } catch (err) {
-        patchState(store, { videoList: [] });
-      }
-    },
+      effect(() => {
+        const prefs = this._userPreferences();
+        localStorage.setItem('dashboard-preferences', JSON.stringify(prefs));
+      });
+    }
+  }
+}
 
-    async loadTimerConfigs() {
-      try {
-        const res = await apiService.get('/timers');
-        const data = await res.json();
-        patchState(store, { timerConfigs: data.timers || [] });
-      } catch (err) {
-        patchState(store, { timerConfigs: [] });
-      }
-    },
+// Dashboard-specific stores
+@Injectable({
+  providedIn: 'root',
+})
+export class CoachDashboardStore {
+  private _teamAthletes = signal<any[]>([]);
+  private _heatmapData = signal<any>(null);
+  private _predictions = signal<any[]>([]);
 
-    refreshVideoList() {
-      return store.loadVideoList();
-    },
+  readonly teamAthletes = computed(() => this._teamAthletes());
+  readonly heatmapData = computed(() => this._heatmapData());
+  readonly predictions = computed(() => this._predictions());
 
-    refreshTimerConfigs() {
-      return store.loadTimerConfigs();
-    },
-  }))
-);
+  setTeamAthletes(athletes: any[]): void {
+    this._teamAthletes.set(athletes);
+  }
+
+  setHeatmapData(data: any): void {
+    this._heatmapData.set(data);
+  }
+
+  setPredictions(predictions: any[]): void {
+    this._predictions.set(predictions);
+  }
+}
+
+@Injectable({
+  providedIn: 'root',
+})
+export class SwimmerDashboardStore {
+  private _progressData = signal<any>(null);
+  private _personalBests = signal<any>(null);
+  private _recommendation = signal<string | null>(null);
+
+  readonly progressData = computed(() => this._progressData());
+  readonly personalBests = computed(() => this._personalBests());
+  readonly recommendation = computed(() => this._recommendation());
+
+  setProgressData(data: any): void {
+    this._progressData.set(data);
+  }
+
+  setPersonalBests(bests: any): void {
+    this._personalBests.set(bests);
+  }
+
+  setRecommendation(text: string | null): void {
+    this._recommendation.set(text);
+  }
+}
+
+@Injectable({
+  providedIn: 'root',
+})
+export class ClubAdminDashboardStore {
+  private _overviewStats = signal<any>(null);
+  private _coachEffectiveness = signal<any[]>([]);
+  private _retentionData = signal<any>(null);
+
+  readonly overviewStats = computed(() => this._overviewStats());
+  readonly coachEffectiveness = computed(() => this._coachEffectiveness());
+  readonly retentionData = computed(() => this._retentionData());
+
+  setOverviewStats(stats: any): void {
+    this._overviewStats.set(stats);
+  }
+
+  setCoachEffectiveness(data: any[]): void {
+    this._coachEffectiveness.set(data);
+  }
+
+  setRetentionData(data: any): void {
+    this._retentionData.set(data);
+  }
+}

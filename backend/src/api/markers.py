@@ -10,7 +10,7 @@ router = APIRouter()
 
 @router.get("/videos/{video_id}/markers")
 def get_markers(video_id: UUID, user_payload: dict = Depends(verify_jwt)):
-    resp = supabase.table("video_markers") \
+    resp = supabase.table("as_video_markers") \
         .select("*") \
         .eq("video_id", str(video_id)) \
         .order("time_offset") \
@@ -22,7 +22,7 @@ def get_markers(video_id: UUID, user_payload: dict = Depends(verify_jwt)):
 def create_marker(video_id: UUID, marker: VideoMarkerInput, user_payload: dict = Depends(verify_jwt)):
     user_id = user_payload.get("uid")
 
-    video_resp = supabase.table("video_uploads") \
+    video_resp = supabase.table("as_video_uploads") \
         .select("id") \
         .eq("id", str(video_id)) \
         .single() \
@@ -31,7 +31,7 @@ def create_marker(video_id: UUID, marker: VideoMarkerInput, user_payload: dict =
     if not video_resp.data:
         raise HTTPException(status_code=404, detail="Video not found.")
 
-    insert_resp = supabase.table("video_markers").insert({
+    insert_resp = supabase.table("as_video_markers").insert({
         "video_id": str(video_id),
         "time_offset": marker.time_offset,
         "marker_type": marker.marker_type,

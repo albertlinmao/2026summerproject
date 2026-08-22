@@ -59,3 +59,21 @@
 - **Decision**: `audio_cue` markers emit a short tone when playback reaches the marker's time offset (in addition to click-to-seek for all markers); routine timers alert with both a visual flash and an audible beep at zero.
 - **Rationale**: Audio provides hands-free timing reference for coaches during routines; dual visual+audio timer alert covers noisy-deck use and silent/hard-of-hearing contexts. Web Audio API for tones (no audio assets needed).
 - **Alternatives considered**: Visual-only markers/timers (missed on loud decks), audio-only timer alert (fails accessibility).
+
+## Decision: Competition Results Browser Treeview (FR-009)
+- **Context**: Users need to browse competition results organized by the exact `swim-meets/` folder hierarchy (Year > Meet > Figure/Routine > PDF type) with database-backed results and PDF links.
+- **Decision**: Backend service scans the `swim-meets/` directory at startup/cached interval to build an in-memory tree structure. API endpoint `GET /results/tree` returns the tree nodes with metadata (path, type, meet_id, has_figure_results, has_routine_results, pdf_summary_path, pdf_detailed_path). Frontend uses Angular CDK virtual scroll tree with lazy-loading children. Toggle between figure/routine results via tab component switching the displayed data table.
+- **Rationale**: Exact folder mirror matches user mental model; database results joined via `source_file` field in `as_meet_figure_result`/`as_meet_routine_result`; PDF paths resolved from filesystem structure. No separate tree table needed — structure is derived from filesystem + DB join.
+- **Alternatives considered**: Separate tree table in DB (sync complexity), recursive CTE on filesystem metadata table (over-engineering), flat list with filters (loses hierarchical navigation).
+
+## Decision: PDF File Serving (FR-009)
+- **Context**: Treeview nodes must link to original PDF files in `swim-meets/` folder (Summary and Detailed PDFs for each meet/event).
+- **Decision**: Serve PDFs via FastAPI endpoint `GET /results/pdf/{year}/{meet}/{type}/{filename}` with `FileResponse` and `media_type=application/pdf`. Backend validates path traversal (resolve absolute path, ensure within `swim-meets/` root). In production, configure Cloudflare Workers or nginx to serve static PDFs directly from the mounted volume for performance.
+- **Rationale**: Keeps PDF access authenticated (via JWT middleware) while leveraging FastAPI's efficient file streaming. Production static serving offloads to CDN/edge.
+- **Alternatives considered**: Supabase Storage for PDFs (duplicate storage, sync complexity), direct filesystem links (breaks auth, CORS), presigned URLs (unnecessary for non-expiring public-ish PDFs).
+
+## Decision: Figure/Routine Toggle in Results Browser (FR-009)
+- **Context**: Users need to switch between viewing figure results and routine results for the same meet/event.
+- **Decision**: Frontend tab component with two states (`figures`, `routines`). When a tree node for a figure meet is selected, fetch `/results/figure/{meet_id}` returning paginated `as_meet_figure_result` data. When routine meet selected, fetch `/results/routine/{meet_id}` returning paginated `as_meet_routine_result` data. Tab state persisted in widget `tree_state` JSONB.
+- **Rationale**: Separate API endpoints match the separate Supabase tables; pagination handles large result sets; tab state restoration improves UX.
+- **Alternatives considered**: Single combined endpoint with type filter (more complex response), client-side filtering (loads all data).

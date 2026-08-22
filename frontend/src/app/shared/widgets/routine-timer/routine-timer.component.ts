@@ -6,13 +6,13 @@ import {
   OnDestroy,
   ChangeDetectionStrategy,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { FormsModule } from '@angular/forms';
 
 @Component({
   selector: 'app-routine-timer',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="card timer-card">
@@ -40,19 +40,11 @@ import { FormsModule } from '@angular/forms';
 
       <div class="controls-row">
         @if (!isRunning()) {
-          <button
-            class="control-btn play-btn"
-            (click)="start()"
-            aria-label="Start timer"
-          >
+          <button class="control-btn play-btn" (click)="start()" aria-label="Start timer">
             <span class="material-icon">play_arrow</span>
           </button>
         } @else {
-          <button
-            class="control-btn pause-btn"
-            (click)="pause()"
-            aria-label="Pause timer"
-          >
+          <button class="control-btn pause-btn" (click)="pause()" aria-label="Pause timer">
             <span class="material-icon">pause</span>
           </button>
         }
@@ -68,144 +60,149 @@ import { FormsModule } from '@angular/forms';
       </div>
     </div>
   `,
-  styles: [`
-    :host {
-      display: block;
-      height: 100%;
-    }
+  styles: [
+    `
+      :host {
+        display: block;
+        height: 100%;
+      }
 
-    .timer-card {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--spacing-lg);
-      text-align: center;
-    }
+      .timer-card {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-lg);
+        text-align: center;
+      }
 
-    .card-heading {
-      margin: 0;
-      color: var(--primary-navy);
-      align-self: flex-start;
-    }
+      .card-heading {
+        margin: 0;
+        color: var(--primary-navy);
+        align-self: flex-start;
+      }
 
-    .timer-display-wrapper {
-      padding: var(--spacing-md) var(--spacing-xl);
-      border-radius: var(--border-radius);
-      transition: background 0.3s;
-    }
+      .timer-display-wrapper {
+        padding: var(--spacing-md) var(--spacing-xl);
+        border-radius: var(--border-radius);
+        transition: background 0.3s;
+      }
 
-    .timer-display-wrapper.flash-alert {
-      animation: flashPulse 0.6s ease-in-out infinite;
-    }
+      .timer-display-wrapper.flash-alert {
+        animation: flashPulse 0.6s ease-in-out infinite;
+      }
 
-    .timer-value {
-      font-family: var(--font-data);
-      font-size: clamp(2rem, 5vw, 4rem);
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 2px;
-      user-select: none;
-    }
+      .timer-value {
+        font-family: var(--font-data);
+        font-size: clamp(2rem, 5vw, 4rem);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 2px;
+        user-select: none;
+      }
 
-    .duration-input-row {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-    }
+      .duration-input-row {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+      }
 
-    .duration-label {
-      font-size: 0.85rem;
-      color: var(--text-secondary);
-      white-space: nowrap;
-    }
+      .duration-label {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        white-space: nowrap;
+      }
 
-    .input-field {
-      padding: 0.6rem 0.75rem;
-      border: 1px solid var(--text-secondary);
-      border-radius: 8px;
-      font-family: var(--font-data);
-      background: transparent;
-      color: var(--text-primary);
-      width: 80px;
-      text-align: center;
-      font-size: 0.95rem;
-    }
-
-    .input-field:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .controls-row {
-      display: flex;
-      gap: var(--spacing-md);
-    }
-
-    .control-btn {
-      min-width: 56px;
-      min-height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: none;
-      border-radius: 50%;
-      cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
-    }
-
-    .control-btn:active {
-      transform: scale(0.95);
-    }
-
-    .control-btn:disabled {
-      opacity: 0.35;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .play-btn {
-      background: var(--primary-teal);
-      color: #fff;
-    }
-
-    .play-btn:hover:not(:disabled) {
-      background: #12666a;
-    }
-
-    .pause-btn {
-      background: var(--accent-gold);
-      color: var(--primary-navy);
-    }
-
-    .pause-btn:hover:not(:disabled) {
-      background: #e6bc5c;
-    }
-
-    .reset-btn {
-      background: var(--surface-color);
-      color: var(--text-primary);
-    }
-
-    .reset-btn:hover:not(:disabled) {
-      background: #e9ecef;
-    }
-
-    .material-icon {
-      font-size: 28px;
-      font-family: 'Material Icons';
-      line-height: 1;
-    }
-
-    @keyframes flashPulse {
-      0%, 100% {
+      .input-field {
+        padding: 0.6rem 0.75rem;
+        border: 1px solid var(--text-secondary);
+        border-radius: 8px;
+        font-family: var(--font-data);
         background: transparent;
+        color: var(--text-primary);
+        width: 80px;
+        text-align: center;
+        font-size: 0.95rem;
       }
-      50% {
-        background: rgba(255, 107, 107, 0.15);
+
+      .input-field:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
-    }
-  `],
+
+      .controls-row {
+        display: flex;
+        gap: var(--spacing-md);
+      }
+
+      .control-btn {
+        min-width: 56px;
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          transform 0.1s;
+      }
+
+      .control-btn:active {
+        transform: scale(0.95);
+      }
+
+      .control-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .play-btn {
+        background: var(--primary-teal);
+        color: #fff;
+      }
+
+      .play-btn:hover:not(:disabled) {
+        background: #12666a;
+      }
+
+      .pause-btn {
+        background: var(--accent-gold);
+        color: var(--primary-navy);
+      }
+
+      .pause-btn:hover:not(:disabled) {
+        background: #e6bc5c;
+      }
+
+      .reset-btn {
+        background: var(--surface-color);
+        color: var(--text-primary);
+      }
+
+      .reset-btn:hover:not(:disabled) {
+        background: #e9ecef;
+      }
+
+      .material-icon {
+        font-size: 28px;
+        font-family: 'Material Icons';
+        line-height: 1;
+      }
+
+      @keyframes flashPulse {
+        0%,
+        100% {
+          background: transparent;
+        }
+        50% {
+          background: rgba(255, 107, 107, 0.15);
+        }
+      }
+    `,
+  ],
 })
 export class RoutineTimerComponent implements OnDestroy {
   @Input()

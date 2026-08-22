@@ -18,7 +18,7 @@ def get_signed_upload_url(user_id: str, filename: str, mime_type: str, size_byte
     res = supabase.storage.from_(STORAGE_BUCKET).create_signed_upload_url(storage_path)
 
     upload_id = uuid.uuid4().hex
-    supabase.table("video_uploads").insert({
+    supabase.table("as_video_uploads").insert({
         "id": upload_id,
         "club_id": None,
         "uploaded_by": user_id,
@@ -53,10 +53,10 @@ def finalize_upload(upload_id: str, storage_path: str, user_id: str) -> dict:
 
         content_length = int(head_resp.headers.get("content-length", 0))
         if content_length > MAX_FILE_SIZE:
-            supabase.table("video_uploads").update({"status": "uploading"}).eq("id", upload_id).execute()
+            supabase.table("as_video_uploads").update({"status": "uploading"}).eq("id", upload_id).execute()
             raise ValueError("File too large. Maximum size is 2GB.")
 
-    supabase.table("video_uploads").update({"status": "ready"}).eq("id", upload_id).execute()
+    supabase.table("as_video_uploads").update({"status": "ready"}).eq("id", upload_id).execute()
 
-    resp = supabase.table("video_uploads").select("*").eq("id", upload_id).single().execute()
+    resp = supabase.table("as_video_uploads").select("*").eq("id", upload_id).single().execute()
     return resp.data

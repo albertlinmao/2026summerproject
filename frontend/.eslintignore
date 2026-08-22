@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+*.min.js
+*.min.css
+angular.json
+tsconfig*.json
+.prettierrc
+.prettierignore
+jest.config.js
+proxy.conf.json
+*.d.ts

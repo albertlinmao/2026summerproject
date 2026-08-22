@@ -1,25 +1,25 @@
 -- T009 Core Tables
-CREATE TABLE club (
+CREATE TABLE as_club (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL
 );
 
-CREATE TABLE coach (
+CREATE TABLE as_coach (
     id UUID PRIMARY KEY,
-    club_id UUID REFERENCES club(id),
+    club_id UUID REFERENCES as_club(id),
     name TEXT NOT NULL
 );
 
-CREATE TABLE athlete (
+CREATE TABLE as_athlete (
     id UUID PRIMARY KEY,
-    club_id UUID REFERENCES club(id),
+    club_id UUID REFERENCES as_club(id),
     name TEXT NOT NULL
 );
 
 -- T010 Competition Result with RLS
 CREATE TABLE competition_result (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    athlete_id UUID REFERENCES athlete(id),
+    athlete_id UUID REFERENCES as_athlete(id),
     score DECIMAL(5,2) NOT NULL,
     date DATE NOT NULL
 );
@@ -31,12 +31,12 @@ ON competition_result
 FOR SELECT
 USING (
     athlete_id IN (
-        SELECT id FROM athlete WHERE club_id = (SELECT club_id FROM coach WHERE id = auth.uid())
+        SELECT id FROM as_athlete WHERE club_id = (SELECT club_id FROM as_coach WHERE id = auth.uid())
     )
 );
 
 -- T011 Materialized Views
-CREATE MATERIALIZED VIEW daily_aggregations AS
+CREATE MATERIALIZED VIEW as_daily_aggregations AS
 SELECT 
     athlete_id, 
     date, 

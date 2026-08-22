@@ -1,6 +1,83 @@
 # Data Model: Artistic Swimming Analytics Dashboard
 
-## Core Entities
+## Core Entities (Existing Supabase Tables)
+
+These tables already exist in Supabase with data imported from PDF files in the `swim-meets/` folder.
+
+### as_event
+Represents a competition event (e.g., "2026 Junior Olympic Championships").
+- `id` (UUID): Primary key.
+- `event_name` (Text): Name of the event.
+- `host_city` (Text): Host city.
+- `event_date` (Date): Event date.
+- `created_at` (Timestamp): Record creation time.
+
+### as_meet
+Represents a specific meet within an event (e.g., "Youth Figure Competition").
+- `id` (UUID): Primary key.
+- `event_id` (UUID): Foreign key to `as_event` (cascade delete).
+- `name` (Text): Meet name.
+- `meet_date` (Date): Meet date.
+- `created_at` (Timestamp): Record creation time.
+
+### as_figure
+Defines a figure performed at a meet with its degree of difficulty.
+- `id` (UUID): Primary key.
+- `meet_id` (UUID): Foreign key to `as_meet` (cascade delete).
+- `figure_code` (Text): Full figure code.
+- `figure_code_short` (Text): Short figure code.
+- `name` (Text): Figure name.
+- `degree_difficulty` (Numeric): Degree of difficulty.
+- `created_at` (Timestamp): Record creation time.
+
+### as_meet_judge_panel
+Judge panel configuration for a figure at a meet.
+- `id` (UUID): Primary key.
+- `meet_id` (UUID): Foreign key to `as_meet` (cascade delete).
+- `figure_id` (UUID): Foreign key to `as_figure` (cascade delete).
+- `figure_code_short` (Text): Short figure code.
+- `panel_name` (Text): Panel name.
+- `panel` (JSON): Judge panel configuration.
+- `created_at` (Timestamp): Record creation time.
+
+### as_meet_figure_result
+Individual athlete figure results for a meet.
+- `id` (UUID): Primary key.
+- `meet_id` (UUID): Foreign key to `as_meet` (cascade delete).
+- `rank` (Text): Rank placement.
+- `draw` (Text): Draw number.
+- `team_code` (Text): Team code.
+- `team_name` (Text): Team name.
+- `athlete_name` (Text): Athlete name.
+- `athlete_birth_year` (Integer): Athlete birth year.
+- `penalty` (Text): Penalty applied.
+- `total_score` (Numeric): Total score for figures (kept for consistency with routines).
+- `figure_score` (Numeric): Weighted total score used for ranking.
+- `figure_scores` (JSONB): Detailed scores per figure.
+- `source_file` (Text): Source PDF filename.
+- `created_at` (Timestamp): Record creation time.
+
+### as_meet_routine_result
+Team/athlete routine results for a meet.
+- `id` (UUID): Primary key.
+- `meet_id` (UUID): Foreign key to `as_meet` (cascade delete).
+- `rank` (Text): Rank placement.
+- `draw` (Text): Draw number.
+- `team_code` (Text): Team code.
+- `team_name` (Text): Team name.
+- `team_athletes` (JSONB): Athletes in the routine.
+- `total_difficulty` (JSONB): Total difficulty breakdown.
+- `routine_scores` (JSONB): Detailed routine scores.
+- `element_total` (Numeric): Elements score total.
+- `artisticimpression_total` (Numeric): Artistic impression total.
+- `synchronization_total` (Numeric): Synchronization total.
+- `routine_score` (Numeric): Final routine score.
+- `source_file` (Text): Source PDF filename.
+- `created_at` (Timestamp): Record creation time.
+
+---
+
+## Reference Entities (Managed by Multi-Tenant User API)
 
 ### Club (Reference)
 Used for row-level security and data isolation (Tenant).
@@ -19,18 +96,12 @@ Represents a team leader.
 - `club_id` (UUID): Foreign key to Club.
 - `name` (String): Coach's display name.
 
-### Competition Result
-The core factual data point used for aggregation. Immutable once published.
-- `id` (UUID): Primary key.
-- `athlete_id` (UUID): Foreign key to Athlete.
-- `meet_id` (UUID): Reference to the meet event.
-- `figure_score` (Numeric): Score received for figures.
-- `routine_score` (Numeric): Score received for routines.
-- `date` (Date): When the competition took place.
-- `created_at` (Timestamp): Record creation time.
+---
+
+## Analytical Entities (Dashboard-Specific)
 
 ### Daily Aggregations (Materialized View)
-Pre-calculated statistics for dashboard rendering.
+Pre-calculated statistics for dashboard rendering, derived from `as_meet_figure_result` and `as_meet_routine_result`.
 - `athlete_id` (UUID): Foreign key to Athlete.
 - `date` (Date): Aggregation date.
 - `avg_figure_score` (Numeric): Calculated average figure score up to this date.
@@ -51,7 +122,11 @@ AI-generated natural language feedback.
 - `generated_at` (Timestamp): When the AI generated this insight.
 - `weakest_figure` (String): Categorized figure needing improvement.
 
-### Video Upload (FR-007)
+---
+
+## Video Analysis Entities (FR-007)
+
+### Video Upload
 Uploaded routine videos for frame-by-frame analysis.
 - `id` (UUID): Primary key.
 - `club_id` (UUID): Foreign key to Club (row-level security scope).
@@ -65,7 +140,7 @@ Uploaded routine videos for frame-by-frame analysis.
 - `created_at` (Timestamp): Record creation time.
 - **Retention**: Rows and storage objects are auto-deleted 90 days after `created_at` (scheduled cleanup job; markers cascade-delete).
 
-### Video Marker (FR-007)
+### Video Marker
 Timestamp markers linked to scoring moments on a video.
 - `id` (UUID): Primary key.
 - `video_id` (UUID): Foreign key to Video Upload (cascade delete).
@@ -76,7 +151,11 @@ Timestamp markers linked to scoring moments on a video.
 - `created_by` (UUID): User reference.
 - `created_at` (Timestamp): Record creation time.
 
-### Routine Timer (FR-008)
+---
+
+## Routine Timer Entity (FR-008)
+
+### Routine Timer
 Client-side routine duration timer state for pool-deck use.
 - `id` (UUID): Primary key.
 - `club_id` (UUID): Foreign key to Club (row-level security scope).
@@ -86,13 +165,44 @@ Client-side routine duration timer state for pool-deck use.
 - `created_at` (Timestamp): Record creation time.
 - Note: Running/paused state is transient client state managed with NgRx Signals; only saved configurations persist.
 
+---
+ 
+## Competition Results Browser Widget (FR-009)
+ 
+### Competition Results Browser Widget
+Modular dashboard widget providing a treeview browser over the `swim-meets/` folder hierarchy with database-backed results and PDF links.
+- `widget_id` (UUID): Primary key (dashboard widget instance).
+- `club_id` (UUID): Foreign key to Club (row-level security scope for widget placement).
+- `user_id` (UUID): User who added the widget (for personalization).
+- `tree_state` (JSONB): Persisted tree expansion/collapse state per user.
+- `active_tab` (Enum): `figures` | `routines` — currently selected result type.
+- `selected_node_path` (Text, optional): Currently selected tree node path (e.g., `2026/JuniorOlympicChampionships/figure/Summary`).
+- `created_at` (Timestamp): Record creation time.
+- `updated_at` (Timestamp): Last modification time.
+- Note: The treeview structure is derived from the filesystem at runtime; no separate tree table needed. PDF links are resolved by mapping `source_file` in result tables to filesystem paths.
+ 
+---
+ 
 ## Relationships
 - A `Club` has many `Athlete`s and `Coach`es.
-- An `Athlete` has many `Competition Result`s, `Predictive Insight`s, and `Coaching Recommendation`s.
+- An `Athlete` has many `Daily Aggregation`s, `Predictive Insight`s, and `Coaching Recommendation`s.
+- An `as_event` has many `as_meet`s.
+- An `as_meet` has many `as_figure`s, `as_meet_judge_panel`s, `as_meet_figure_result`s, and `as_meet_routine_result`s.
+- An `as_figure` has many `as_meet_judge_panel`s.
 - A `Video Upload` has many `Video Marker`s; a `Video Marker` belongs to one `Video Upload`.
 
+---
+
+## Data Integration Notes
+- **Athlete Linking**: `as_meet_figure_result.athlete_name` and `as_meet_routine_result.team_athletes` contain athlete names. These must be matched to `Athlete` records (managed externally) for dashboard aggregation. Matching strategy: fuzzy name + birth year + club/team_code.
+- **Team/Club Linking**: `team_code`/`team_name` in results map to `Club` records via external reference.
+- **Immutability**: Supabase result tables (`as_meet_figure_result`, `as_meet_routine_result`) are immutable once imported (amendments require re-import).
+- **Isolation**: Dashboard queries must filter by `club_id` matching the authenticated user's token claims (resolved via Multi-Tenant User Service).
+
+---
+
 ## Validation & Rules
-- **Immutability**: `Competition Result` records cannot be updated after creation (amendments required).
+- **Immutability**: `as_meet_figure_result` and `as_meet_routine_result` records cannot be updated after import (amendments require re-import from source PDF).
 - **Isolation**: Queries must filter by `club_id` matching the authenticated user's token claims.
 - **Video privacy (family access)**: `Video Upload` and `Video Marker` access MUST be restricted to the filmed athlete, their coaches, and their parents. RLS predicates resolve the requesting user's relationship to `video_uploads.athlete_id` (self, coach-of, parent-of) using Multi-Tenant User Service claims; storage objects in Supabase Storage must use the same access scope.
 - **Video immutability**: Uploaded video objects and `storage_path` cannot be changed after finalization; markers can be added/removed.

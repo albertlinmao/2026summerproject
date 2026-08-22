@@ -1,11 +1,4 @@
-import {
-  Component,
-  Output,
-  EventEmitter,
-  signal,
-  ChangeDetectionStrategy,
-} from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, Output, EventEmitter, signal, ChangeDetectionStrategy } from '@angular/core';
 
 export interface UploadCompleteEvent {
   id: string;
@@ -19,7 +12,7 @@ const VALID_MIME_PREFIX = 'video/';
 @Component({
   selector: 'app-video-upload',
   standalone: true,
-  imports: [CommonModule],
+  imports: [],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="card upload-card">
@@ -62,11 +55,7 @@ const VALID_MIME_PREFIX = 'video/';
             <span class="file-name">{{ selectedFile()!.name }}</span>
             <span class="file-size font-data">{{ formatFileSize(selectedFile()!.size) }}</span>
           </div>
-          <button
-            class="control-btn"
-            (click)="clearSelection()"
-            aria-label="Remove file"
-          >
+          <button class="control-btn" (click)="clearSelection()" aria-label="Remove file">
             <span class="material-icon">close</span>
           </button>
         </div>
@@ -86,199 +75,201 @@ const VALID_MIME_PREFIX = 'video/';
         </button>
       }
 
-      <input
-        #fileInput
-        type="file"
-        accept="video/*"
-        hidden
-        (change)="onFileSelected($event)"
-      />
+      <input #fileInput type="file" accept="video/*" hidden (change)="onFileSelected($event)" />
     </div>
   `,
-  styles: [`
-    :host {
-      display: block;
-      height: 100%;
-    }
+  styles: [
+    `
+      :host {
+        display: block;
+        height: 100%;
+      }
 
-    .upload-card {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-md);
-    }
+      .upload-card {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+      }
 
-    .card-heading {
-      margin: 0;
-      color: var(--primary-navy);
-    }
+      .card-heading {
+        margin: 0;
+        color: var(--primary-navy);
+      }
 
-    .error-banner {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-      padding: var(--spacing-sm) var(--spacing-md);
-      background: rgba(255, 107, 107, 0.12);
-      border: 1px solid var(--accent-coral);
-      border-radius: 8px;
-      color: var(--accent-coral);
-      font-weight: 500;
-    }
+      .error-banner {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-md);
+        background: rgba(255, 107, 107, 0.12);
+        border: 1px solid var(--accent-coral);
+        border-radius: 8px;
+        color: var(--accent-coral);
+        font-weight: 500;
+      }
 
-    .error-icon {
-      font-size: 20px;
-      font-family: 'Material Icons';
-    }
+      .error-icon {
+        font-size: 20px;
+        font-family: 'Material Icons';
+      }
 
-    .progress-section {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-md);
-    }
+      .progress-section {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+      }
 
-    .progress-track {
-      flex: 1;
-      height: 8px;
-      background: var(--surface-color);
-      border-radius: 4px;
-      overflow: hidden;
-    }
+      .progress-track {
+        flex: 1;
+        height: 8px;
+        background: var(--surface-color);
+        border-radius: 4px;
+        overflow: hidden;
+      }
 
-    .progress-fill {
-      height: 100%;
-      background: var(--primary-teal);
-      border-radius: 4px;
-      transition: width 0.25s ease;
-    }
+      .progress-fill {
+        height: 100%;
+        background: var(--primary-teal);
+        border-radius: 4px;
+        transition: width 0.25s ease;
+      }
 
-    .progress-label {
-      font-family: var(--font-data);
-      font-size: 0.9rem;
-      color: var(--text-secondary);
-      min-width: 40px;
-      text-align: right;
-    }
+      .progress-label {
+        font-family: var(--font-data);
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        min-width: 40px;
+        text-align: right;
+      }
 
-    .drop-zone {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--spacing-sm);
-      padding: var(--spacing-xl);
-      border: 2px dashed var(--text-secondary);
-      border-radius: var(--border-radius);
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-      min-height: 180px;
-    }
+      .drop-zone {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-xl);
+        border: 2px dashed var(--text-secondary);
+        border-radius: var(--border-radius);
+        cursor: pointer;
+        transition:
+          border-color 0.2s,
+          background 0.2s;
+        min-height: 180px;
+      }
 
-    .drop-zone:hover,
-    .drop-zone.drag-over {
-      border-color: var(--primary-teal);
-      background: rgba(23, 128, 130, 0.05);
-    }
+      .drop-zone:hover,
+      .drop-zone.drag-over {
+        border-color: var(--primary-teal);
+        background: rgba(23, 128, 130, 0.05);
+      }
 
-    .drop-icon {
-      font-size: 48px;
-      font-family: 'Material Icons';
-      color: var(--primary-teal);
-    }
+      .drop-icon {
+        font-size: 48px;
+        font-family: 'Material Icons';
+        color: var(--primary-teal);
+      }
 
-    .drop-text {
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin: 0;
-    }
+      .drop-text {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0;
+      }
 
-    .drop-subtext {
-      font-size: 0.85rem;
-      color: var(--text-secondary);
-      margin: 0;
-    }
+      .drop-subtext {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin: 0;
+      }
 
-    .drop-hint {
-      font-size: 0.75rem;
-      color: var(--text-secondary);
-      margin: 0;
-      opacity: 0.7;
-    }
+      .drop-hint {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        margin: 0;
+        opacity: 0.7;
+      }
 
-    .file-info {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-md);
-      padding: var(--spacing-md);
-      background: var(--surface-color);
-      border-radius: 8px;
-    }
+      .file-info {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        padding: var(--spacing-md);
+        background: var(--surface-color);
+        border-radius: 8px;
+      }
 
-    .file-icon {
-      font-size: 32px;
-      font-family: 'Material Icons';
-      color: var(--primary-teal);
-    }
+      .file-icon {
+        font-size: 32px;
+        font-family: 'Material Icons';
+        color: var(--primary-teal);
+      }
 
-    .file-details {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
+      .file-details {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
 
-    .file-name {
-      font-weight: 500;
-      color: var(--text-primary);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+      .file-name {
+        font-weight: 500;
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
 
-    .file-size {
-      font-family: var(--font-data);
-      font-size: 0.85rem;
-      color: var(--text-secondary);
-    }
+      .file-size {
+        font-family: var(--font-data);
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+      }
 
-    .control-btn {
-      min-width: 56px;
-      min-height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: transparent;
-      border: none;
-      color: var(--text-secondary);
-      cursor: pointer;
-      border-radius: 50%;
-    }
+      .control-btn {
+        min-width: 56px;
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border-radius: 50%;
+      }
 
-    .control-btn:hover {
-      background: rgba(0, 0, 0, 0.05);
-    }
+      .control-btn:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
 
-    .material-icon {
-      font-size: 24px;
-      font-family: 'Material Icons';
-      line-height: 1;
-    }
+      .material-icon {
+        font-size: 24px;
+        font-family: 'Material Icons';
+        line-height: 1;
+      }
 
-    .upload-btn {
-      width: 100%;
-      min-height: 56px;
-    }
+      .upload-btn {
+        width: 100%;
+        min-height: 56px;
+      }
 
-    .spinning {
-      animation: spin 1s linear infinite;
-    }
+      .spinning {
+        animation: spin 1s linear infinite;
+      }
 
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-  `],
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    `,
+  ],
 })
 export class VideoUploadComponent {
   @Output() uploadComplete = new EventEmitter<UploadCompleteEvent>();
@@ -352,7 +343,7 @@ export class VideoUploadComponent {
       const signRes = await fetch('/api/uploads/sign', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('auth_token') || 'test-jwt-token'}`,
+          Authorization: `Bearer ${localStorage.getItem('auth_token') || 'test-jwt-token'}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -397,7 +388,7 @@ export class VideoUploadComponent {
       const finalizeRes = await fetch('/api/uploads/finalize', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('auth_token') || 'test-jwt-token'}`,
+          Authorization: `Bearer ${localStorage.getItem('auth_token') || 'test-jwt-token'}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ upload_id, storage_path }),

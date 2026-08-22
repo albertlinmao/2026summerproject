@@ -1,7 +1,9 @@
+import os
 from datetime import datetime, timezone
 
 from openai import OpenAI, OpenAIError, APITimeoutError
 
+from src.core.config import get_settings
 from src.models.insights import CoachingRecommendation
 
 
@@ -9,7 +11,19 @@ class AIServiceUnavailableError(Exception):
     pass
 
 
-_client = OpenAI()
+_client: OpenAI | None = None
+
+
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        api_key = get_settings().OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise AIServiceUnavailableError(
+                "OPENAI_API_KEY is not configured; AI coach unavailable"
+            )
+        _client = OpenAI(api_key=api_key)
+    return _client
 
 SYSTEM_PROMPT = (
     "You are an expert artistic swimming coach. "
@@ -28,7 +42,7 @@ def generate_coaching_recommendation(
     )
 
     try:
-        response = _client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},

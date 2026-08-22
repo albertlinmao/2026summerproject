@@ -11,7 +11,7 @@ router = APIRouter()
 def get_timers(user_payload: dict = Depends(verify_jwt)):
     user_id = user_payload.get("uid")
 
-    athlete_resp = supabase.table("athlete") \
+    athlete_resp = supabase.table("as_athlete") \
         .select("club_id") \
         .eq("id", user_id) \
         .single() \
@@ -22,7 +22,7 @@ def get_timers(user_payload: dict = Depends(verify_jwt)):
 
     club_id = athlete_resp.data.get("club_id")
 
-    resp = supabase.table("routine_timers") \
+    resp = supabase.table("as_routine_timers") \
         .select("*") \
         .eq("club_id", club_id) \
         .order("created_at", desc=True) \
@@ -35,7 +35,7 @@ def get_timers(user_payload: dict = Depends(verify_jwt)):
 def create_timer(timer: RoutineTimerInput, user_payload: dict = Depends(verify_jwt)):
     user_id = user_payload.get("uid")
 
-    athlete_resp = supabase.table("athlete") \
+    athlete_resp = supabase.table("as_athlete") \
         .select("club_id") \
         .eq("id", user_id) \
         .single() \
@@ -46,7 +46,7 @@ def create_timer(timer: RoutineTimerInput, user_payload: dict = Depends(verify_j
 
     club_id = athlete_resp.data.get("club_id")
 
-    insert_resp = supabase.table("routine_timers").insert({
+    insert_resp = supabase.table("as_routine_timers").insert({
         "club_id": club_id,
         "title": timer.title,
         "duration_seconds": timer.duration_seconds,

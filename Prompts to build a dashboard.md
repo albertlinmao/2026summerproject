@@ -10,7 +10,19 @@
 </details>
 
 ---
+<details>
+<summary><h2>2026-08-19</h2></summary>
 
+#Task1: update the data-model 
+Prompts: update the data-model to leverage the existing event, meet, scores tables defined in the file sql\create_figures_table.sql
+
+```text
+
+```
+
+</details>
+
+---
 <details>
 <summary><h2>2026-08-16</h2></summary>
 

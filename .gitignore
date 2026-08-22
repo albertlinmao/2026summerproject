@@ -4,14 +4,57 @@ dist/
 build/
 *.log
 .env*
+.env.local
+.env.*.local
 coverage/
 .angular/
+.eslintcache
 
 # Python / FastAPI
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .venv/
 venv/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+*.pyc
+*.pyd
+*.so
+.*.swp
+.*.swo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+
+# Build outputs
+*.min.js
+*.min.css
+*.map
+
+# Supabase
+.supabase/
+supabase/.temp/
+
+# Testing
+coverage/
+.nyc_output/

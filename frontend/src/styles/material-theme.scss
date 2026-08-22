@@ -1,0 +1,161 @@
+// Angular Material M3 theme for Artistic Swimming Analytics Dashboard
+// Brand tokens: navy primary, teal secondary, coral tertiary
+
+@use '@angular/material' as mat;
+@use 'sass:color';
+@use 'sass:map';
+
+// Build a full M3 palette structure from a seed color.
+// M3 validation requires the 0-100 tonal keys plus secondary/neutral/neutral-variant sub-palettes.
+@function create-m3-palette($seed) {
+  $tones: (
+    0: #000000,
+    10: color.mix(#000000, $seed, 88%),
+    20: color.mix(#000000, $seed, 72%),
+    25: color.mix(#000000, $seed, 64%),
+    30: color.mix(#000000, $seed, 56%),
+    35: color.mix(#000000, $seed, 48%),
+    40: color.mix(#000000, $seed, 40%),
+    50: $seed,
+    60: color.mix(#ffffff, $seed, 38%),
+    70: color.mix(#ffffff, $seed, 58%),
+    80: color.mix(#ffffff, $seed, 75%),
+    90: color.mix(#ffffff, $seed, 88%),
+    95: color.mix(#ffffff, $seed, 94%),
+    98: color.mix(#ffffff, $seed, 97%),
+    99: color.mix(#ffffff, $seed, 99%),
+    100: #ffffff,
+  );
+
+  // Desaturated variant for secondary (mix with mid-gray)
+  $gray: #808080;
+  $secondary-tones: ();
+  @each $tone, $value in $tones {
+    $secondary-tones: map.set($secondary-tones, $tone, color.mix($gray, $value, 45%));
+  }
+
+  // Neutral ramp (nearly pure gray, slightly tinted)
+  $neutral: (
+    0: #000000,
+    10: #1c1b1f,
+    20: #313033,
+    25: #3c3b3e,
+    30: #474649,
+    35: #535255,
+    40: #5f5e61,
+    50: #78767a,
+    60: #929094,
+    70: #acaaae,
+    80: #c8c5c9,
+    90: #e4e1e5,
+    95: #f2f0f3,
+    98: #fbf8fc,
+    99: #fefbfe,
+    100: #ffffff,
+    4: #0e0d10,
+    6: #131316,
+    12: #202023,
+    17: #2a2a2d,
+    22: #353437,
+    24: #39393c,
+    87: #dbd9dd,
+    92: #eae7eb,
+    94: #efedf1,
+    96: #f5f2f6,
+  );
+
+  $neutral-variant: (
+    0: #000000,
+    10: #1d1a22,
+    20: #322f37,
+    25: #3d3a42,
+    30: #49454d,
+    35: #545159,
+    40: #605d65,
+    50: #79757e,
+    60: #938f98,
+    70: #aea9b2,
+    80: #c9c4cd,
+    90: #e6e0e9,
+    95: #f4eef8,
+    98: #fdf8ff,
+    99: #fffbfe,
+    100: #ffffff,
+  );
+
+  $full: $tones;
+  $full: map.set($full, 'secondary', $secondary-tones);
+  $full: map.set($full, 'neutral', $neutral);
+  $full: map.set($full, 'neutral-variant', $neutral-variant);
+  $full: map.set(
+    $full,
+    'error',
+    (
+      0: #000000,
+      10: #410002,
+      20: #690005,
+      25: #7e0007,
+      30: #93000a,
+      35: #a80710,
+      40: #ba1a1a,
+      50: #de3730,
+      60: #ff5449,
+      70: #ff897d,
+      80: #ffb4ab,
+      90: #ffdad6,
+      95: #ffedea,
+      98: #fff8f7,
+      99: #fffbff,
+      100: #ffffff,
+    )
+  );
+  @return $full;
+}
+
+// Brand palettes
+$navy-palette: create-m3-palette(#001f3f);
+$teal-palette: create-m3-palette(#006d77);
+$coral-palette: create-m3-palette(#e85d4d);
+
+// Light theme
+$light-theme: mat.define-theme(
+  (
+    color: (
+      theme-type: light,
+      primary: $navy-palette,
+      tertiary: $coral-palette,
+    ),
+    typography: (
+      plain-family: 'Inter, Roboto, sans-serif',
+      brand-family: 'Inter, Roboto, sans-serif',
+    ),
+    density: (
+      scale: 0,
+    ),
+  )
+);
+
+// Dark theme
+$dark-theme: mat.define-theme(
+  (
+    color: (
+      theme-type: dark,
+      primary: $navy-palette,
+      tertiary: $coral-palette,
+    ),
+    typography: (
+      plain-family: 'Inter, Roboto, sans-serif',
+      brand-family: 'Inter, Roboto, sans-serif',
+    ),
+    density: (
+      scale: 0,
+    ),
+  )
+);
+
+@include mat.core();
+@include mat.all-component-themes($light-theme);
+
+html[data-theme='dark'] {
+  @include mat.all-component-colors($dark-theme);
+}

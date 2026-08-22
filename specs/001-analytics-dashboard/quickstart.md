@@ -60,3 +60,16 @@
 2. **Action**: Toggle between light and dark themes from the persisted control; reload the page.
 3. **Expected Outcome**: Theme switches instantly with no flash of the wrong theme on reload (inline script); preference persists across sessions. Navy/ocean teal primary tones, coral/gold accents render correctly in both themes.
 4. **Expected Outcome**: Programmatic contrast check (axe-core/Lighthouse, both themes) passes WCAG 2.1 AA (4.5:1 normal text, 3:1 large text).
+
+### Scenario 8: Competition Results Browser (FR-009)
+1. **Setup**: Obtain a JWT for any authenticated user role; ensure `swim-meets/` folder exists with sample PDFs.
+2. **Action**: Add the Competition Results Browser widget to the dashboard; open it.
+3. **Expected Outcome**: Treeview loads and renders the full swim-meets hierarchy (Year > Meet > Figure/Routine > PDF type) within 3 seconds (verifying `GET /results/tree` contract).
+4. **Action**: Navigate the tree to a specific figure meet (e.g., `2026/JuniorOlympicChampionships/figure/Summary`).
+5. **Expected Outcome**: Figure results table displays data from `as_meet_figure_result` (verifying `GET /results/figure/{meet_id}`); PDF links for Summary and Detailed are present and clickable.
+6. **Action**: Click a PDF link (Summary or Detailed).
+7. **Expected Outcome**: Original PDF file opens from the filesystem (verifying `GET /results/pdf/{year}/{meet}/{type}/{filename}`) within 1 second.
+8. **Action**: Navigate to a routine meet and switch the tab to "Routines".
+9. **Expected Outcome**: Routine results table displays data from `as_meet_routine_result` with element/artistic/sync breakdowns.
+10. **Action**: Toggle the tree expansion state, reload the page.
+11. **Expected Outcome**: Tree expansion state persists per user (widget `tree_state` JSONB).
