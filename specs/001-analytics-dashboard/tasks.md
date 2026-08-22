@@ -50,7 +50,7 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 
 - [x] T011 Setup database schema and Supabase migrations framework (baseline migration)
 - [x] T012 [P] Apply existing Supabase tables migration (as_event, as_meet, as_figure, as_meet_judge_panel, as_meet_figure_result, as_meet_routine_result) from sql/create_figures_table.sql
-- [x] T013 [P] Create migration for dashboard-specific tables: video_uploads, video_markers, routine_timers, competition_results_browser_widgets, as_daily_aggregations (materialized view), as_predictive_insights, as_coaching_recommendations
+- [x] T013 [P] Create migration for dashboard-specific tables: video_uploads, video_markers, routine_timers, as_competition_results_browser_widgets, as_daily_aggregations (materialized view), as_predictive_insights, as_coaching_recommendations
 - [x] T014 [P] Configure Row Level Security (RLS) policies for club isolation on all tables
 - [x] T015 [P] Configure RLS for video_uploads with family-access predicate (athlete_id link, coach-of, parent-of via Multi-Tenant User Service claims)
 - [x] T016 Implement FastAPI app structure with lifespan, middleware, exception handlers
@@ -85,7 +85,7 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 - [x] T031 [P] [US1] Create AthleteReference model in backend/src/models/athlete_ref.py (UUID, club_id, name)
 - [x] T032 [P] [US1] Create CoachReference model in backend/src/models/coach_ref.py (UUID, club_id, name)
 - [x] T033 [P] [US1] Create ClubReference model in backend/src/models/club_ref.py (UUID, name)
-- [x] T034 [P] [US1] Create CompetitionResult model in backend/src/models/competition_result.py (aggregation from as_meet_figure_result + as_meet_routine_result)
+- [x] T034 [P] [US1] Create CompetitionResult model in backend/src/models/as_competition_result.py (aggregation from as_meet_figure_result + as_meet_routine_result)
 - [x] T035 [P] [US1] Create PredictiveInsight model in backend/src/models/predictive_insight.py (athlete_id, next_score_prediction, plateau_risk, confidence_interval)
 - [x] T036 [P] [US1] Create CoachingRecommendation model in backend/src/models/coaching_recommendation.py (athlete_id, recommendation_text, generated_at, weakest_figure)
 - [x] T037 [US1] Implement AnalyticsService in backend/src/services/analytics/analytics_service.py (score distributions, ranking histories, figure radar chart data)
@@ -305,7 +305,7 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 Task: "Create AthleteReference model in backend/src/models/athlete_ref.py"
 Task: "Create CoachReference model in backend/src/models/coach_ref.py"
 Task: "Create ClubReference model in backend/src/models/club_ref.py"
-Task: "Create CompetitionResult model in backend/src/models/competition_result.py"
+Task: "Create CompetitionResult model in backend/src/models/as_competition_result.py"
 Task: "Create PredictiveInsight model in backend/src/models/predictive_insight.py"
 Task: "Create CoachingRecommendation model in backend/src/models/coaching_recommendation.py"
 

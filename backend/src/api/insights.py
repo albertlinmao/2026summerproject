@@ -17,7 +17,7 @@ def get_athlete_insights(
     user_payload: dict = Depends(verify_jwt),
 ):
     response = (
-        supabase.table("competition_results")
+        supabase.table("as_competition_results")
         .select("*")
         .eq("athlete_id", athlete_id)
         .order("competition_date", desc=True)

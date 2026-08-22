@@ -17,17 +17,17 @@ CREATE TABLE as_athlete (
 );
 
 -- T010 Competition Result with RLS
-CREATE TABLE competition_result (
+CREATE TABLE as_competition_result (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     athlete_id UUID REFERENCES as_athlete(id),
     score DECIMAL(5,2) NOT NULL,
     date DATE NOT NULL
 );
 
-ALTER TABLE competition_result ENABLE ROW LEVEL SECURITY;
+ALTER TABLE as_competition_result ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can only view their club's competition results"
-ON competition_result
+ON as_competition_result
 FOR SELECT
 USING (
     athlete_id IN (
@@ -41,7 +41,7 @@ SELECT
     athlete_id, 
     date, 
     AVG(score) as avg_score 
-FROM competition_result 
+FROM as_competition_result 
 GROUP BY athlete_id, date;
 -- Create normalized tables for parsed figure results
 -- Run this in your Supabase SQL editor or psql against the project's DB

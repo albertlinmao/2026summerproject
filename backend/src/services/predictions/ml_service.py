@@ -47,7 +47,7 @@ def predict_baseline_average(club_id: str) -> float:
     from src.core.database import supabase
 
     response = (
-        supabase.table("competition_results")
+        supabase.table("as_competition_results")
         .select("score")
         .eq("club_id", club_id)
         .execute()
