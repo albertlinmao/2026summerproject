@@ -195,3 +195,133 @@ async def get_pdf_file(
         media_type="application/pdf",
         filename=filename
     )
+
+@router.get("/events", response_model=SingleResponse[List[dict]])
+async def get_events(user: dict = Depends(get_current_user)):
+    supabase = get_supabase()
+    result = supabase.table("as_event").select("id, event_name").execute()
+    data = [{"id": r["id"], "name": r["event_name"]} for r in (result.data or [])]
+    return SingleResponse(data=data)
+
+@router.get("/events/{event_id}/meets", response_model=SingleResponse[List[dict]])
+async def get_meets_for_event(event_id: str, user: dict = Depends(get_current_user)):
+    import uuid
+    try:
+        uuid.UUID(str(event_id))
+    except ValueError:
+        return SingleResponse(data=[])
+        
+    supabase = get_supabase()
+    result = supabase.table("as_meet").select("id, name").eq("event_id", event_id).execute()
+    return SingleResponse(data=result.data or [])
+
+@router.get("/meets/{meet_id}/teams", response_model=SingleResponse[List[dict]])
+async def get_teams_for_meet(meet_id: str, user: dict = Depends(get_current_user)):
+    import uuid
+    try:
+        uuid.UUID(str(meet_id))
+    except ValueError:
+        return SingleResponse(data=[])
+
+    supabase = get_supabase()
+    fig_res = supabase.table("as_meet_figure_result").select("team_code, team_name").eq("meet_id", meet_id).execute()
+    rout_res = supabase.table("as_meet_routine_result").select("team_code, team_name").eq("meet_id", meet_id).execute()
+    
+    teams = {}
+    for r in (fig_res.data or []):
+        if r.get("team_code"):
+            teams[r["team_code"]] = r.get("team_name") or r["team_code"]
+    for r in (rout_res.data or []):
+        if r.get("team_code"):
+            teams[r["team_code"]] = r.get("team_name") or r["team_code"]
+            
+    data = [{"id": k, "name": v} for k, v in teams.items()]
+    data.sort(key=lambda x: x["name"])
+    return SingleResponse(data=data)
+
+@router.get("/meets/{meet_id}/teams/{team_code}/athletes", response_model=SingleResponse[List[dict]])
+async def get_athletes_for_team(meet_id: str, team_code: str, user: dict = Depends(get_current_user)):
+    import uuid
+    try:
+        uuid.UUID(str(meet_id))
+    except ValueError:
+        return SingleResponse(data=[])
+
+    supabase = get_supabase()
+    result = supabase.table("as_meet_figure_result").select("athlete_name").eq("meet_id", meet_id).eq("team_code", team_code).execute()
+    
+    athletes = set()
+    for r in (result.data or []):
+        if r.get("athlete_name"):
+            athletes.add(r["athlete_name"])
+            
+    data = [{"id": a, "name": a} for a in sorted(athletes)]
+    return SingleResponse(data=data)
+
+@router.get("/meets/{meet_id}/teams/{team_code}/routines", response_model=SingleResponse[List[dict]])
+async def get_routines_for_team(meet_id: str, team_code: str, user: dict = Depends(get_current_user)):
+    import uuid
+    try:
+        uuid.UUID(str(meet_id))
+    except ValueError:
+        return SingleResponse(data=[])
+
+    supabase = get_supabase()
+    result = supabase.table("as_meet_routine_result").select("*").eq("meet_id", meet_id).eq("team_code", team_code).execute()
+    
+    data = []
+    for r in (result.data or []):
+        name = "Routine"
+        if r.get("source_file"):
+            name = Path(r["source_file"]).stem.replace("Detailed_-_", "").replace("_", " ")
+        
+        athletes = []
+        if r.get("team_athletes"):
+            import json
+            try:
+                # Could be a string or a parsed list depending on postgrest
+                athletes_data = r["team_athletes"]
+                if isinstance(athletes_data, str):
+                    athletes_data = json.loads(athletes_data)
+                if isinstance(athletes_data, list):
+                    athletes = [a.get("name") for a in athletes_data if isinstance(a, dict) and a.get("name")]
+            except Exception:
+                pass
+
+        data.append({
+            "routineName": name,
+            "type": "Team",
+            "score": r.get("routine_score", 0),
+            "athletes": athletes
+        })
+    return SingleResponse(data=data)
+
+@router.get("/meets/{meet_id}/athletes/{athlete_name}/figures", response_model=SingleResponse[List[dict]])
+async def get_figures_for_athlete(meet_id: str, athlete_name: str, user: dict = Depends(get_current_user)):
+    import uuid
+    try:
+        uuid.UUID(str(meet_id))
+    except ValueError:
+        return SingleResponse(data=[])
+
+    supabase = get_supabase()
+    result = supabase.table("as_meet_figure_result").select("*").eq("meet_id", meet_id).eq("athlete_name", athlete_name).execute()
+    
+    data = []
+    for r in (result.data or []):
+        figure_scores = r.get("figure_scores", {})
+        if isinstance(figure_scores, str):
+            import json
+            try:
+                figure_scores = json.loads(figure_scores)
+            except Exception:
+                figure_scores = {}
+        if isinstance(figure_scores, dict):
+            for figure_name, score in figure_scores.items():
+                data.append({
+                    "figureName": figure_name,
+                    "dd": "",
+                    "score": score
+                })
+    return SingleResponse(data=data)
+

@@ -32,15 +32,33 @@ class JWTAuth:
 
     async def validate_token(self, token: str) -> Dict[str, Any]:
         try:
-            signing_key = self.jwks_client.get_signing_key_from_jwt(token)
-            payload = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=[settings.USER_SERVICE_JWT_ALGORITHM],
-                audience=settings.APP_NAME,
-                options={"verify_aud": True}
-            )
+            if self._jwks_url:
+                # Tokens issued by the external Multi-Tenant User Service (RS256 via JWKS).
+                signing_key = self.jwks_client.get_signing_key_from_jwt(token)
+                payload = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=[settings.USER_SERVICE_JWT_ALGORITHM],
+                    audience=settings.APP_NAME,
+                    options={"verify_aud": True}
+                )
+            elif settings.USER_SERVICE_JWT_SECRET:
+                # Locally-issued tokens (HS256 shared secret), e.g. from POST /api/auth/login
+                payload = jwt.decode(
+                    token,
+                    settings.USER_SERVICE_JWT_SECRET,
+                    algorithms=["HS256"],
+                    audience=settings.APP_NAME,
+                )
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail="JWT validation not configured. Set USER_SERVICE_JWKS_URL "
+                           "or USER_SERVICE_JWT_SECRET.",
+                )
             return payload
+        except HTTPException:
+            raise
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=401, detail="Token has expired")
         except jwt.InvalidAudienceError:

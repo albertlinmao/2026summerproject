@@ -1,5 +1,5 @@
 import {
-  AfterViewInit,
+  AfterViewChecked,
   Component,
   ElementRef,
   NgZone,
@@ -80,26 +80,24 @@ export interface FigureHeatmapData {
     `,
   ],
 })
-export class FigureHeatmapWidgetComponent implements AfterViewInit, OnDestroy, OnChanges {
+export class FigureHeatmapWidgetComponent implements AfterViewChecked, OnDestroy, OnChanges {
   @Input() heatmap: FigureHeatmapData | null = null;
   @Input() loading = false;
   @Input() maxVisibleRows = 12;
 
-  @ViewChild('chartContainer', { static: true }) chartContainer!: ElementRef<HTMLDivElement>;
+  // Not static: the container is inside an @else branch and only exists
+  // after loading finished with data present.
+  @ViewChild('chartContainer') chartContainer?: ElementRef<HTMLDivElement>;
 
   private zone = inject(NgZone);
   private chart: echarts.ECharts | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
-  ngAfterViewInit(): void {
-    this.zone.runOutsideAngular(() => {
-      this.chart = echarts.init(this.chartContainer.nativeElement, undefined, {
-        renderer: 'canvas',
-      });
-      this.resizeObserver = new ResizeObserver(() => this.chart?.resize());
-      this.resizeObserver.observe(this.chartContainer.nativeElement);
-      this.render();
-    });
+  // Inputs change before the conditional container renders, so (re)attempt
+  // initialization after each change-detection pass; tryInitChart no-ops
+  // until data and DOM are both ready.
+  ngAfterViewChecked(): void {
+    this.tryInitChart();
   }
 
   ngOnDestroy(): void {
@@ -121,6 +119,25 @@ export class FigureHeatmapWidgetComponent implements AfterViewInit, OnDestroy, O
     return `Figure weakness heatmap for ${this.heatmap.athletes.length} athletes across ${this.heatmap.figures.length} figures${
       weakest ? `, weakest overall: ${weakest}` : ''
     }`;
+  }
+
+  private tryInitChart(): void {
+    if (this.chart || this.loading || !this.heatmap?.athletes.length) {
+      return;
+    }
+    const el = this.chartContainer?.nativeElement;
+    if (!el) {
+      return;
+    }
+
+    this.zone.runOutsideAngular(() => {
+      this.chart = echarts.init(el, undefined, {
+        renderer: 'canvas',
+      });
+      this.resizeObserver = new ResizeObserver(() => this.chart?.resize());
+      this.resizeObserver.observe(el);
+      this.render();
+    });
   }
 
   private render(): void {

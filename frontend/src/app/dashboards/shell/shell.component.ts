@@ -47,14 +47,6 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
         [fixedTopGap]="64"
       >
         <mat-nav-list class="nav-list">
-          <!-- Logo/Brand -->
-          <div class="nav-header">
-            <app-icon name="trophy" size="large" class="nav-brand-icon"></app-icon>
-            <app-typography variant="title-large" color="on-surface" class="nav-brand-text">
-              Swim Analytics
-            </app-typography>
-          </div>
-
           <!-- Navigation Items -->
           @if (canAccessCoach()) {
             <a
@@ -98,6 +90,12 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
       <mat-sidenav-content class="main-content">
         <!-- Top Toolbar -->
         <mat-toolbar class="toolbar">
+          <!-- Logo/Brand -->
+          <div class="toolbar-brand" routerLink="/">
+            <img src="/icons/as_dashboard_logo.png" alt="Logo" class="toolbar-brand-logo" />
+            <span class="toolbar-brand-text"><span class="brand-ez">ez</span> ArtisticSwimming</span>
+          </div>
+
           <button
             mat-icon-button
             (click)="sidenav.toggle()"
@@ -107,6 +105,26 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
           >
             <app-icon name="menu"></app-icon>
           </button>
+
+          <!-- Top-level Navigation Items -->
+          <div class="nav-items">
+            <button mat-button routerLink="/" class="nav-link">
+              <app-icon name="home" style="margin-right: 4px;"></app-icon>
+              Home
+            </button>
+            <button mat-button routerLink="/about" class="nav-link">
+              <app-icon name="info" style="margin-right: 4px;"></app-icon>
+              About Us
+            </button>
+            <button mat-button [matMenuTriggerFor]="clubsMenu" class="nav-link">
+              <app-icon name="groups" style="margin-right: 4px;"></app-icon>
+              Clubs
+            </button>
+            <button mat-button [matMenuTriggerFor]="resourcesMenu" class="nav-link">
+              <app-icon name="assessment" style="margin-right: 4px;"></app-icon>
+              Resources
+            </button>
+          </div>
 
           <div class="toolbar-spacer"></div>
 
@@ -123,6 +141,18 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
             <app-icon [name]="themeService.isDark() ? 'light_mode' : 'dark_mode'"></app-icon>
           </button>
 
+          <!-- Logout Button -->
+          <button
+            mat-button
+            (click)="logout()"
+            class="logout-button"
+            matTooltip="Sign Out"
+            style="margin-right: 8px; color: var(--md-sys-color-primary);"
+          >
+            <app-icon name="logout" style="margin-right: 4px; vertical-align: middle;"></app-icon>
+            <span style="vertical-align: middle;">Logout</span>
+          </button>
+
           <!-- User Menu -->
           <button
             mat-icon-button
@@ -132,6 +162,26 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
           >
             <app-icon name="person" size="large"></app-icon>
           </button>
+
+          <mat-menu #clubsMenu="matMenu">
+            <button mat-menu-item routerLink="/clubs/seattle-synchro">
+              <span>Seattle Synchro Swimming</span>
+            </button>
+            <button mat-menu-item routerLink="/clubs/santa-clara-artistic">
+              <span>Santa Clara Artistic Swimming</span>
+            </button>
+          </mat-menu>
+
+          <mat-menu #resourcesMenu="matMenu">
+            <button mat-menu-item routerLink="/dashboard/results">
+              <app-icon matMenuItemIcon name="score"></app-icon>
+              <span>Competition Scores</span>
+            </button>
+            <button mat-menu-item routerLink="/dashboard/results/pdf">
+              <app-icon matMenuItemIcon name="picture_as_pdf"></app-icon>
+              <span>Competition Result (PDF)</span>
+            </button>
+          </mat-menu>
 
           <mat-menu #userMenu="matMenu">
             <div class="user-menu-header">
@@ -179,8 +229,10 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
         border-bottom: 1px solid var(--md-sys-color-outline-variant);
       }
 
-      .nav-brand-icon {
-        color: var(--md-sys-color-primary);
+      .nav-brand-logo {
+        height: 32px;
+        width: auto;
+        object-fit: contain;
       }
 
       .nav-brand-text {
@@ -235,10 +287,65 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
         position: sticky;
         top: 0;
         z-index: var(--md-sys-z-index-sticky);
+        align-items: flex-end;
+        padding-bottom: 0;
+      }
+
+      .toolbar-brand {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--md-sys-spacing-2);
+        cursor: pointer;
+        padding: 0 var(--md-sys-spacing-2) 0 0;
+        border-radius: var(--md-sys-corner-medium);
+        transition: background 0.2s;
+        height: 100%;
+      }
+
+      .toolbar-brand:hover {
+        background: var(--md-sys-color-surface-variant);
+      }
+
+      .toolbar-brand-logo {
+        height: 80px;
+        width: 80px;
+        object-fit: contain;
+        margin-bottom: -20px;
+        z-index: 10;
+      }
+
+      .toolbar-brand-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-family: 'Georgia', 'Times New Roman', serif;
+        font-size: 1.5rem;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        background: linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-secondary));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 4px;
+      }
+
+      .brand-ez {
+        font-family: 'Brush Script MT', 'Snell Roundhand', cursive;
+        font-size: 2rem;
+        font-weight: 400;
+        letter-spacing: -1px;
+      }
+
+      .nav-items {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--md-sys-spacing-1);
+        margin-bottom: 4px;
       }
 
       .menu-button {
         margin-right: var(--md-sys-spacing-2);
+        margin-bottom: 4px;
       }
 
       .toolbar-spacer {

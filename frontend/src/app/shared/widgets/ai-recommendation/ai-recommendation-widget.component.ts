@@ -1,4 +1,11 @@
-import { Component, Input, OnChanges, SimpleChanges, inject } from '@angular/core';
+import {
+  Component,
+  Input,
+  OnChanges,
+  SimpleChanges,
+  inject,
+  ChangeDetectorRef,
+} from '@angular/core';
 
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -91,6 +98,7 @@ export class AIRecommendationWidgetComponent implements OnChanges {
   readonly AI_UNAVAILABLE_TEXT = AI_UNAVAILABLE_TEXT;
 
   private http = inject(HttpClient);
+  private cdr = inject(ChangeDetectorRef);
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['athleteId'] && this.athleteId) {
@@ -112,7 +120,7 @@ export class AIRecommendationWidgetComponent implements OnChanges {
     try {
       const res = await firstValueFrom(
         this.http.get<RecommendationResponse>(
-          `${environment.apiUrl}/api/analytics/athletes/${this.athleteId}/recommendation`
+          `${environment.apiUrl}/analytics/athletes/${this.athleteId}/recommendation`
         )
       );
       if (res.recommendation_text === AI_UNAVAILABLE_TEXT) {
@@ -124,6 +132,7 @@ export class AIRecommendationWidgetComponent implements OnChanges {
       this.unavailable = true;
     } finally {
       this.loading = false;
+      this.cdr.detectChanges();
     }
   }
 }

@@ -1,4 +1,11 @@
-import { Component, Input, OnChanges, SimpleChanges, inject } from '@angular/core';
+import {
+  Component,
+  Input,
+  OnChanges,
+  SimpleChanges,
+  inject,
+  ChangeDetectorRef,
+} from '@angular/core';
 
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -24,12 +31,7 @@ export interface PredictionInsight {
 @Component({
   selector: 'app-prediction-widget',
   standalone: true,
-  imports: [
-    CardComponent,
-    TypographyComponent,
-    LoadingSpinnerComponent,
-    ErrorDisplayComponent,
-  ],
+  imports: [CardComponent, TypographyComponent, LoadingSpinnerComponent, ErrorDisplayComponent],
   template: `
     <app-card title="Qualification Prediction" [subtitle]="subtitle()">
       @if (!athleteId) {
@@ -148,6 +150,7 @@ export class PredictionWidgetComponent implements OnChanges {
   retryActions = ErrorDisplayComponent.retryAction(() => this.load());
 
   private http = inject(HttpClient);
+  private cdr = inject(ChangeDetectorRef);
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['athleteId'] && this.athleteId) {
@@ -180,7 +183,7 @@ export class PredictionWidgetComponent implements OnChanges {
     try {
       const res = await firstValueFrom(
         this.http.get<PredictionInsight>(
-          `${environment.apiUrl}/api/analytics/athletes/${this.athleteId}/prediction`
+          `${environment.apiUrl}/analytics/athletes/${this.athleteId}/prediction`
         )
       );
       this.insight = res;
@@ -189,6 +192,7 @@ export class PredictionWidgetComponent implements OnChanges {
       this.insight = null;
     } finally {
       this.loading = false;
+      this.cdr.detectChanges();
     }
   }
 }

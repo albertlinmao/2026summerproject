@@ -23,6 +23,10 @@ import { IconComponent } from '../../shared/ui/icon.component';
     <div class="login-page">
       <div class="login-container">
         <app-card class="login-card" [elevated]="true">
+          <div class="login-brand" routerLink="/">
+            <img src="/icons/as_dashboard_logo.png" alt="Logo" class="login-brand-logo" />
+            <span class="login-brand-text"><span class="brand-ez">ez</span> ArtisticSwimming</span>
+          </div>
           <div class="login-header">
             <app-icon name="trophy" size="xlarge" class="login-icon"></app-icon>
             <app-typography variant="headline-medium" color="primary">
@@ -86,6 +90,19 @@ import { IconComponent } from '../../shared/ui/icon.component';
             </app-button>
           </form>
 
+          <div class="demo-buttons" style="margin-top: 1rem;">
+            <app-button
+              variant="outlined"
+              size="large"
+              [fullWidth]="true"
+              (click)="loginAsSophie()"
+              [disabled]="isLoading()"
+            >
+              <app-icon name="person" size="small"></app-icon>
+              Login as Coach Sophie Lin
+            </app-button>
+          </div>
+
           <div class="login-footer">
             <app-typography variant="body-small" color="on-surface-variant">
               Demo mode - any credentials work
@@ -118,6 +135,44 @@ import { IconComponent } from '../../shared/ui/icon.component';
       .login-header {
         text-align: center;
         margin-bottom: var(--md-sys-spacing-6);
+      }
+
+      .login-brand {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--md-sys-spacing-2);
+        justify-content: center;
+        margin-bottom: var(--md-sys-spacing-4);
+        padding-bottom: 0;
+      }
+
+      .login-brand-logo {
+        height: 80px;
+        width: 80px;
+        object-fit: contain;
+        margin-bottom: -20px;
+      }
+
+      .login-brand-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-family: 'Georgia', 'Times New Roman', serif;
+        font-size: 1.5rem;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        background: linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-secondary));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 4px;
+      }
+
+      .brand-ez {
+        font-family: 'Brush Script MT', 'Snell Roundhand', cursive;
+        font-size: 2rem;
+        font-weight: 400;
+        letter-spacing: -1px;
       }
 
       .login-icon {
@@ -197,18 +252,31 @@ export class LoginComponent {
     return [ErrorDisplayComponent.dismissAction(() => this.errorMessage.set(''))];
   }
 
-  onSubmit(): void {
+  async onSubmit(): Promise<void> {
     this.errorMessage.set('');
     this.isLoading.set(true);
 
-    this.authService.login({ email: this.email, password: this.password });
-
-    // The auth service handles navigation, but we need to handle errors
-    // In a real app, this would be an observable
-    setTimeout(() => {
-      if (this.isLoading()) {
-        this.isLoading.set(false);
+    try {
+      await this.authService.login({ email: this.email, password: this.password });
+    } catch (err: any) {
+      const detail = err?.error?.detail;
+      if (typeof detail === 'string') {
+        this.errorMessage.set(detail);
+      } else if (err?.status === 0) {
+        this.errorMessage.set(
+          'Cannot reach the authentication server. Please make sure the API is running.'
+        );
+      } else {
+        this.errorMessage.set('Sign in failed. Please try again.');
       }
-    }, 1000);
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  loginAsSophie(): void {
+    this.email = 'sophie.lin@sst.example.com';
+    this.password = 'demo123';
+    this.onSubmit();
   }
 }

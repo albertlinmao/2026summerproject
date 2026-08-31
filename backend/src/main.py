@@ -19,6 +19,7 @@ from src.api.uploads import router as uploads_router
 from src.api.markers import router as markers_router
 from src.api.timers import router as timers_router
 from src.api.results_browser import router as results_browser_router
+from src.api.auth import router as auth_router
 from src.api.health import router as health_router
 
 settings = get_settings()
@@ -77,6 +78,7 @@ app.include_router(uploads_router, prefix="/api")
 app.include_router(markers_router, prefix="/api")
 app.include_router(timers_router, prefix="/api")
 app.include_router(results_browser_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 
 
 @app.get("/")

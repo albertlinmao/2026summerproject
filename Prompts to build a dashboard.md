@@ -10,11 +10,30 @@
 </details>
 
 ---
-<details>
-<summary><h2>2026-08-19</h2></summary>
 
-#Task1: update the data-model 
-Prompts: update the data-model to leverage the existing event, meet, scores tables defined in the file sql\create_figures_table.sql
+<details>
+<summary><h2>2026-08-27</h2></summary>
+
+OOTO at home. Want to add data integration function to the dashboard. After manually load competition result, build an admin page to sort the data
+
+## Step1: Browse the data
+
+build an admin page to browse the competition results
+
+1. login as Coach Sophie Lin
+2. browse the figure results which stored in table as_meet_figure_result,as_event, as_meet, as_figure , as_meet_judge_panel
+   I should be able to navigate on a tree build up from an event, to a meet in the event, to a meet with team, to an athlete, then see all figure scores of the athlete
+3. browse the routin results which stored in table as_meet_routin_result, as_event, as_meet, as_meet_judge_panel
+   I should be able to navigate on a tree build up from an event, to a meet in the event, to a meet with team, then I should see the routine scores of the team, and the athletes if athletes exist in the table
+4. login to the app as an admin
+
+## Integration
+
+1. After competitions result is loaded to the database from PDF files, build a front end admin tool to try mapping the data with club, swimmer, and scores.
+   Here is the mapping rules.
+   Figure result is loaded into the table as_meet_figure_result.
+   Routine result is laoded into the table as_meet_routine_result.
+2. the tool shold be able to upload the PDF to Superbase, and create a meta data table for the PDF, it should have fields for fileName, competition name, competition date, host city, tags.
 
 ```text
 
@@ -23,13 +42,67 @@ Prompts: update the data-model to leverage the existing event, meet, scores tabl
 </details>
 
 ---
+
+<details>
+<summary><h2>2026-08-19</h2></summary>
+
+How to demo the progress? Documented in the MD - specs\001-analytics-dashboard\demo-steps.md
+
+#Task3: how to use OpenCode while switching between CPP Google/Zen?
+
+#Task2:  
+Prompts: enhance the demo data creation script generate_demo_data.py, scan the data in the superbase, create a SST coach Sophie Lin, and generate all dashboards for Coach Sophie Lin, and also enable login/logout for Coach Sophie Lin
+
+#Task1: update the data-model
+Prompts: update the data-model to leverage the existing event, meet, scores tables defined in the file sql\create_figures_table.sql
+
+```text
+postgres://postgres:d27096746169f71e6c16998af5dc5322c14c28a2@localhost:5432/postgres
+
+demo data creation
+>Python generate_demo_data.py
+
+
+# Execution Summary: Data Generation for User Story 1
+
+## Objective
+Create demonstration data to fulfill the requirements of **User Story 1 - Coach Team Analysis & Prediction** for the Artistic Swimming Analytics Dashboard.
+
+## Actions Taken
+1. **Analyzed Requirements**:
+   - Reviewed `specs/001-analytics-dashboard/spec.md` to understand User Story 1, which requires tracking team performance, plateau risk, next score predictions, and AI-driven coaching insights for athletes under a coach's purview.
+   - Reviewed `specs/001-analytics-dashboard/data-model.md` to identify the required tables (`as_athlete`, `as_predictive_insights`, `as_coaching_recommendations`, and `as_club`).
+
+2. **Database Introspection**:
+   - Verified that the relevant tables existed in the local PostgreSQL instance.
+   - Checked the columns for the analytical entities to construct proper insert queries.
+
+3. **Data Generation Script (`generate_demo_data.py`)**:
+   - Created a Python script that connects to the local PostgreSQL database using `psycopg2`.
+   - **Club Initialization**: Ensures a base club (Seattle Synchro - 'SST') exists to group the athletes.
+   - **Athletes**: Inserted a set of mock athletes (e.g., Emma Johnson, Olivia Davis) linked to the 'SST' club.
+   - **Predictive Insights**: Populated the `as_predictive_insights` table with randomly generated `next_score_prediction`, `plateau_risk` (25% chance of being true), and `confidence_interval`.
+   - **Coaching Recommendations**: Populated the `as_coaching_recommendations` table with a mock `weakest_figure` and an AI-style `recommendation_text`.
+
+4. **Execution**:
+   - Executed the script, successfully seeding the local database with the required dummy data.
+   - The script also prints a summary of the inserted data for immediate verification.
+
+## Next Steps
+The backend and frontend can now query these tables for the 'SST' club to accurately render the Coach Dashboard, testing UI components like the team overview, plateau warnings, and predicted scores.
+```
+
+</details>
+
+---
+
 <details>
 <summary><h2>2026-08-16</h2></summary>
 
 Prompt1:
 to enhance the dashboard with the following styles -
 
-Color PalettePrimary Tones: Deep navy blue and ocean teal to represent the pool and water.Backgrounds: Clean white or dark slate gray depending on indoor or outdoor coaching environments.Accent Colors: Bright coral or gold for high-priority alerts, top scores, and action buttons.Layout and StructureCard-Based Grid: Put video analysis, routine timers, and score breakdowns into separate, clean boxes.Sticky Navigation: Keep main controls like play, pause, and timestamp markers visible on the screen at all times.Whitespace: Leave empty space around elements so the screen does not look crowded in bright sunlight or under harsh pool lights.Typography and IconsFont Choice: Use clean sans-serif fonts like Inter or Roboto for fast reading of numbers and text.Font Sizing: Make scores and timers extra large so you can read them from a distance across the pool deck.Waterproof Icons: Use simple, filled vector icons for quick actions like video upload, audio cue, and timing marks.If you'd like, tell me:Do you prefer a light mode or dark mode layout?What are the top three features you use most on the deck?I can give you more specific design ideas.Woodmark Consulting5 Layout Tips for BI Dashboards - Woodmark ConsultingFeb 3, 2022 — Tip 3: Space is ace: inner padding is your secret weapon The biggest challenge in a dashboard is to visually 
+Color PalettePrimary Tones: Deep navy blue and ocean teal to represent the pool and water.Backgrounds: Clean white or dark slate gray depending on indoor or outdoor coaching environments.Accent Colors: Bright coral or gold for high-priority alerts, top scores, and action buttons.Layout and StructureCard-Based Grid: Put video analysis, routine timers, and score breakdowns into separate, clean boxes.Sticky Navigation: Keep main controls like play, pause, and timestamp markers visible on the screen at all times.Whitespace: Leave empty space around elements so the screen does not look crowded in bright sunlight or under harsh pool lights.Typography and IconsFont Choice: Use clean sans-serif fonts like Inter or Roboto for fast reading of numbers and text.Font Sizing: Make scores and timers extra large so you can read them from a distance across the pool deck.Waterproof Icons: Use simple, filled vector icons for quick actions like video upload, audio cue, and timing marks.If you'd like, tell me:Do you prefer a light mode or dark mode layout?What are the top three features you use most on the deck?I can give you more specific design ideas.Woodmark Consulting5 Layout Tips for BI Dashboards - Woodmark ConsultingFeb 3, 2022 — Tip 3: Space is ace: inner padding is your secret weapon The biggest challenge in a dashboard is to visually
 
 ```text
 + Thought: Confirming Successful Build · 243ms
@@ -37,7 +110,7 @@ I've successfully updated the dashboard with your requested styles:
 1. Color Palette: Added deep navy blue (--primary-navy) and ocean teal (--primary-teal) as main colors, with white/slate gray backgrounds. Added bright coral (--accent-coral) and gold (--accent-gold) for actions and highlights. Supports a basic light/dark mode preference via media query.
 2. Layout and Structure: Implemented a card-based grid layout with generous padding (--card-padding). Added a sticky navigation bar with primary controls and icons at the top of the screen.
 3. Typography and Icons: Integrated Google Fonts (Inter and Roboto). Made the scores and timers extra large (3.5rem to 3rem) for easy reading across the pool deck. Used simple filled icons (e.g. 🏷️, ⏱, ▶) for fast recognition.
-The changes have been applied to the global CSS (styles.css), the main application shell (shell.component.ts), and the specific widgets (video-correction, routine-choreography, coach-overview) to match the desired look. 
+The changes have been applied to the global CSS (styles.css), the main application shell (shell.component.ts), and the specific widgets (video-correction, routine-choreography, coach-overview) to match the desired look.
 The application builds successfully with the new styling integrated.
 ```
 

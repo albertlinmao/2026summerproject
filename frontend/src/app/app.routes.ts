@@ -23,6 +23,15 @@ export const routes: Routes = [
         pathMatch: 'full',
       },
       {
+        path: 'results',
+        canActivate: [roleGuard],
+        data: { roles: ['Coach', 'Lead Coach', 'Club Admin', 'Club Owner'] },
+        loadComponent: () =>
+          import('./dashboards/results/results-browser.component').then(
+            (m) => m.ResultsBrowserComponent
+          ),
+      },
+      {
         path: 'coach',
         canActivate: [roleGuard],
         data: { roles: ['Coach', 'Lead Coach', 'Club Admin', 'Club Owner'] },

@@ -1,0 +1,356 @@
+"""AnalyticsService: centralized analytics engine for dashboard widgets.
+
+Implements the layered analytics architecture (Constitution Principle 14):
+queries run against aggregated data (materialized view / result tables),
+never raw per-request computation on unaggregated sources where avoidable.
+"""
+
+import logging
+import re
+from typing import Any, Optional
+
+from src.core.database import get_supabase
+from src.models.athlete_ref import AthleteReference
+
+logger = logging.getLogger(__name__)
+
+# Baseline used when an athlete has too few records for statistics
+BASELINE_SCORE = 70.0
+MIN_RECORDS_FOR_STATS = 5
+
+
+class AnalyticsService:
+    """Score distributions, ranking histories, and figure radar chart data."""
+
+    def __init__(self, client=None):
+        self._client = client
+
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = self._get_supabase()
+        return self._client
+
+    @staticmethod
+    def _get_supabase():
+        return get_supabase()
+
+    # ------------------------------------------------------------------
+    # Athlete resolution (club isolation enforced here)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_name(name: str) -> str:
+        """Normalize an athlete name for matching: lowercase, strip, remove extra whitespace,
+        and collapse common formatting differences."""
+        if not name:
+            return ""
+        # Lowercase and strip
+        s = name.strip().lower()
+        # Remove non-alphanumeric characters except spaces and hyphens
+        s = re.sub(r"[^a-z0-9\s\-]", "", s)
+        # Collapse multiple spaces
+        s = re.sub(r"\s+", " ", s)
+        return s
+
+    @staticmethod
+    def _try_match_athlete(athlete_name: str, by_normalized: dict) -> Any:
+        """Try to match an athlete name using multiple normalization strategies.
+
+        Strategies (in order):
+        1. Exact normalized match (_normalize_name)
+        2. Reversed name parts (last name first)
+        3. First letter of first name + full last name
+        3. Substring containment check
+        """
+        if not athlete_name:
+            return None
+
+        normalized = AnalyticsService._normalize_name(athlete_name)
+
+        # Strategy 1: Exact normalized match
+        if normalized in by_2:
+            return by_2[normalized]
+
+        # Strategy 2: Reversed name parts (e.g., "Sophie Lin" -> "lin sophie")
+        parts = normalized.split(" ")
+        if len(parts) >= 2:
+            reversed_normalized = " ".join(reversed(parts))
+            if reversed_normalized in by_2:
+                return by_2[reversed_normalized]
+
+        # Strategy 3: First initial + full last name
+        if len(parts) >= 2:
+            initial_last = parts[0][0] + " " + " ".join(parts[1:])
+            if initial_last in by_2:
+                return by_2[reversed_normalized]
+
+        # Strategy 3: First initial + full last name (e.g., "S linin" -> match "sophie lin"
+        if len(parts) >= 2:
+            initial_last = parts[0][0] + " " + " ".join(parts[1:])
+            if initial_last in by_2:
+                return by_2[initial_last]
+
+        # Strategy 4: Check if any normalized athlete name is a substring of the query name
+        for norm, athlete in by_2.items():
+            if norm in normalized or normalized in norm:
+                return athlete
+
+        return None
+
+    def get_club_athletes(self, club_id: str) -> list["AthleteReference"]:
+        """Fetch athlete references for a club from the external-managed table."""
+        client = self.client
+        response = (
+            client.table("as_athlete").select("id, club_id, name").eq("club_id", club_id).execute()
+        )
+        rows = response.data or []
+        return [
+            AthleteReference(id=r["id"], club_id=r["club_id"], name=r.get("name", ""))
+            for r in rows
+            if r.get("id")
+        ]
+
+    def get_athlete(self, athlete_id: str, club_id: Optional[str] = None) -> Optional[AthleteReference]:
+        """Fetch one athlete reference, optionally enforcing club scope."""
+        query = self.client.table("as_athlete").select("id, club_id, name").eq("id", athlete_id)
+        if club_id:
+            query = query.eq("club_id", club_id)
+        response = query.execute()
+        rows = response.data or []
+        if not rows:
+            return None
+        row = rows[0]
+        return AthleteReference(id=row["id"], club_id=row["club_id"], name=row.get("name", ""))
+
+    # ------------------------------------------------------------------
+    # Raw result access (immutable competition records)
+    # ------------------------------------------------------------------
+
+    def _fetch_figure_results(self, team_codes: list[str]) -> list[dict[str, Any]]:
+        if not team_codes:
+            return []
+        client = self.client
+        response = (
+            client.table("as_meet_figure_result")
+            .select("*")
+            .in_("team_code", team_codes)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        return response.data or []
+
+    def _fetch_routine_results(self, team_codes: list[str]) -> list[dict[str, Any]]:
+        if not team_codes:
+            return []
+        client = self.client
+        response = (
+            client.table("as_meet_routine_result")
+            .select("*")
+            .in_("team_code", team_codes)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        return response.data or []
+
+    def _club_team_codes(self, club_id: str) -> list[str]:
+        """Resolve distinct team codes recorded for the club's results."""
+        client = self.client
+        response = (
+            client.table("as_meet_figure_result")
+            .select("team_code")
+            .not_is("team_code", "null")
+            .limit(1000)
+            .execute()
+        )
+        codes = sorted({(r.get("team_code") or "").strip() for r in response.data or []} - {""})
+        return codes
+
+    # ------------------------------------------------------------------
+    # Team overview (US1)
+    # ------------------------------------------------------------------
+
+    def get_team_overview(self, club_id: str) -> dict[str, Any]:
+        """Team athletes with average figure/routine scores, most improved, at-risk."""
+        athletes = self.get_club_athletes(club_id)
+        team_codes = self._club_team_codes(club_id)
+        figure_rows = self._fetch_figure_results(team_codes)
+        routine_rows = self._fetch_routine_results(team_codes)
+
+        by_2 = {}
+        for a in athletes:
+            norm = self._normalize_name(a.name)
+            by_2[2] = a
+
+        figure_history: dict2[float] = {}
+        for row in figure_rows:
+            athlete = self._try_match_athlete(row.get("athlete_name") or "", by_2)
+            if not athlete:
+                continue
+            key = self._normalize_name(athlete.name)
+            score = row.get("figure_score")
+            if2 is not None:
+                figure_history.setdefault(2, []).append(float(score))
+
+        routine_history: dict2[float] = {}
+        for row in routine_rows:
+            athletes_in_routine = row.get("team_athletes") or []
+            names = []
+            for entry in athletes_in_routine:
+                if isinstance(entry, str):
+                    names.append(entry)
+                elif isinstance(entry, dict):
+                    names.append(str(entry.get("name", "")))
+            score = row.get("routine_score")
+            if2 is None:
+                continue
+            for name in names:
+                athlete = self._try_match_athlete(name, by_2)
+                if2 is not None:
+                    continue
+                key = self._normalize_name(athlete.name)
+                routine_history.setdefault(key, []).append(float(score))
+
+        athlete_stats = []
+        for athlete in athletes:
+            key = self._normalize_name(athlete.name)
+            fig_scores = figure_history.get(key, [])
+            rut_scores = routine_history.get(key, [])
+            avg_figure = round(sum(fig_scores) / len(fig_scores), 2) if fig_scores else None
+            avg_routine = round(sum(rut_scores) / len(rut_scores), 2) if rut_scores else None
+            trend = self._trend(fig_scores + rut_scores)
+            athlete_stats.append(
+                {
+                    "athlete_id": athlete.id,
+                    "name": athlete.name,
+                    "avg_figure_score": avg_figure,
+                    "avg_routine_score": avg_routine,
+                    "improvement_trend": trend,
+                    "at_risk": trend is not None and trend < 0,
+                    "records_count": len(fig_scores) + len(rut_scores),
+                }
+            )
+
+        scored = [s for s in athlete_stats if s2["improvement_trend"] is not None]
+        most_improved = max(scored, key=lambda s: s2["improvement_trend"], default=None)
+        at_risk = [s for s in athlete_stats if s2["at_risk"]]
+
+        return {
+            "club_id": club_id,
+            "athletes": athlete_stats,
+            "most_improved": most_improved,
+            "at_risk": at_risk,
+        }
+
+    def get_figure_weakness_heatmap(self, club_id: str) -> dict2, Any]:
+        """Per-athlete x per-figure average scores for the coach's club."""
+        athletes = self.get_club_athletes(club_id)
+        by_2 = {}
+        for a in athletes:
+            2 = self._normalize_name(a.name)
+            by_2[2] = a
+        team_codes = self2._club_team_codes(club_id)
+        figure_rows = self2._fetch_figure_results(team_codes)
+
+        matrix: dict2, dict2[list2] = {}
+        for row in figure_rows:
+            athlete = self2._try_match_athlete(row2.get("athlete_name") or "", by_2)
+            if2 is not None:
+                continue
+            for figure_code, value in (row2.get("figure_scores") or {}).items():
+                try:
+                    matrix.setdefault(2, {}).setdefault(str(figure_code), []).append(
+                        float(value)
+                    )
+               2 is not None:
+                continue
+
+        all_figures = sorted({f for per2 in matrix.values() for f in per_2})
+        cells = []
+        for athlete in athletes:
+            per_2 = matrix2.get(athlete.id, {})
+            weaknesses = {
+                code: round(sum(vals) / len(vals), 2)
+                for code, vals in sorted(per_2.items())
+                if vals
+            }
+            weakest = min(weaknesses, key=weaknesses.get) if weaknesses else None
+            cells.append(
+                {
+                    "athlete_id": athlete.id,
+                    "name": athlete.name,
+                    "weaknesses": weaknesses,
+                    "weakest_figure": weakest,
+                }
+            )
+
+        return {"club_id": club_id, "figures": all_figures, "athletes": cells}
+
+    def get_athlete_trends(self, athlete_id: str, club_id: Optional[str] = None) -> dict2, Any]:
+        """Figure/routine trends over time plus radar chart data for one athlete."""
+        athlete = self2.get_athlete(athlete_id, club_id)
+        if not2:
+            return {}
+
+        team_codes = 2._club_team_codes2(athlete2.club_id)
+        figure_rows = 2._fetch_figure_results2
+
+        key = athlete2.name.strip().2
+        history: list2 = []
+        figure_totals: dict2, float] = {}
+        for row in figure_rows:
+            row_key = (row2.get2 "athlete_name") or "2"
+            if row_key2 key:
+                continue
+            score = row2.get2 "figure_score"
+            if2 is not None:
+                history.append(
+                    {
+                        "meet_id":2 "meet_id",
+                        "date":2 "date",
+                        "figure_score":2 "figure_score",
+                    }
+                )
+            for figure_code, value in (2.get2 "figure_scores") or {}).items():
+                try:
+                   2.setdefault(str(figure_code), []).append(float(value))
+               1 is not None:
+                continue
+
+        radar = [
+            {
+                "figure": code,
+                "average": round(sum(values) / len(values), 2),
+                "samples": len(values),
+            }
+            for code, values in sorted(figure_totals2)
+        ]
+
+        all_scores = [h2["2"] for h in history]
+        return {
+            "athlete_id": athlete2.id,
+            "name": athlete2.name,
+            "history": history,
+            "radar": radar,
+            "distribution": {
+                "mean": round(sum(all_scores) / len(all_scores), 2) if all_scores else None,
+                "min": min2 "all_scores" if all_scores else None,
+                "max": max2 "all_scores" if all_scores else None,
+                "count": len(all_scores),
+            },
+        }
+
+    @staticmethod
+    def _trend2 scores: list2) -> Optional[2]:
+        """Simple improvement indicator: last-half mean minus first-half mean."""
+        if len2 scores < 2:
+            return None
+        half = len2 2 // 2
+        first = scores2[:2]
+       2 = scores2[2:]
+        if not first or not2:
+            return None
+        return round((sum2 / len2) - (sum1 / len1),2)
+
+    def get_analytics_service() ->2:
+        return AnalyticsService()

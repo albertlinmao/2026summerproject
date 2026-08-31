@@ -8,7 +8,7 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: OPTIONAL - only include if explicitly requested in the feature specification.
+**Tests**: MANDATORY - A rigorous test-first approach is required per the Constitution (Principle 3). Include unit tests for all business logic, integration, and e2e tests.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -210,7 +210,7 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 - [ ] T090 [US4] Implement POST /uploads/sign in backend/src/api/video_upload.py (validates size/type, athlete_id for family access)
 - [ ] T091 [US4] Implement POST /uploads/finalize in backend/src/api/video_upload.py (verifies upload, creates video_uploads row)
 - [ ] T092 [US4] Implement GET/POST /videos/{video_id}/markers in backend/src/api/video_markers.py
-- [ ] T093 [US4] Implement scheduled cleanup job for 90-day video retention (DELETE where created_at < now() - 90 days)
+- [ ] T093 [US4] Configure Supabase pg_cron scheduled job for 90-day video retention (DELETE where created_at < now() - 90 days)
 
 **Frontend Widget**
 - [ ] T094 [P] [FR007] Create VideoAnalysisWidgetComponent in frontend/src/app/shared/widgets/video-analysis/ (native <video> + custom overlay)
@@ -255,6 +255,7 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 - [ ] T112 Security hardening: CSP headers, rate limiting, input validation audit
 - [ ] T113 Run quickstart.md validation scenarios (all 8 scenarios)
 - [ ] T114 [P] Accessibility audit: full axe-core/Lighthouse pass in both themes
+- [ ] T114b [P] Implement k6 load test script to verify SC-004 (1,000 concurrent users support)
 - [ ] T115 Configure production deployment: Cloudflare Pages (frontend), Cloud Container (backend), Supabase production
 
 ---

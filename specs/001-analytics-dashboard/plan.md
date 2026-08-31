@@ -14,7 +14,7 @@ Implement a full-stack Artistic Swimming Analytics Dashboard to track athlete pr
 
 **Primary Dependencies**: Angular 22, Angular Material (M3 theming), FastAPI, Supabase (PostgreSQL + Storage), Redis, Apache ECharts, NgRx Signals
 
-**Storage**: PostgreSQL (via Supabase) with Row Level Security and Materialized Views; Supabase Storage (presigned-URL uploads) for routine videos
+**Storage**: PostgreSQL (via Supabase) with Row Level Security, Materialized Views, and pg_cron for scheduled tasks; Supabase Storage (presigned-URL uploads) for routine videos
 
 **Testing**: pytest (backend), Jest (frontend), axe-core/Lighthouse (accessibility CI)
 

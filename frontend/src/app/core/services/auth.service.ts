@@ -2,7 +2,7 @@ import { Injectable, signal, computed, effect, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { environment } from '../../../environments/environment';
-import { tap, catchError, of } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 
 export interface User {
   id: string;
@@ -12,6 +12,13 @@ export interface User {
   permissions: string[];
   name?: string;
   email?: string;
+}
+
+interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user: User;
 }
 
 @Injectable({
@@ -74,29 +81,19 @@ export class AuthService {
     }
   }
 
-  login(credentials: { email: string; password: string }): void {
+  async login(credentials: { email: string; password: string }): Promise<void> {
     this._isLoading.set(true);
 
-    // For now, simulate login with mock data
-    // In production, this would call the actual auth API
-    setTimeout(() => {
-      const mockUser: User = {
-        id: 'mock-user-id',
-        clubId: 'mock-club-id',
-        roles: ['Coach'],
-        athleteIds: [],
-        permissions: ['read:dashboard', 'read:analytics'],
-        name: 'Coach User',
-        email: credentials.email,
-      };
-
-      const mockToken = 'mock-jwt-token-' + Date.now();
-      this.saveAuth(mockToken, mockUser);
-      this._isLoading.set(false);
-
+    try {
+      const res = await firstValueFrom(
+        this.http.post<LoginResponse>(`${environment.apiUrl}/auth/login`, credentials)
+      );
+      this.saveAuth(res.access_token, res.user);
       // Navigate to dashboard
       this.router.navigate(['/dashboard']);
-    }, 500);
+    } finally {
+      this._isLoading.set(false);
+    }
   }
 
   logout(): void {

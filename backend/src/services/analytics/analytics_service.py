@@ -115,12 +115,22 @@ class AnalyticsService:
         for row in figure_rows:
             key = (row.get("athlete_name") or "").strip().lower()
             score = row.get("figure_score")
+            if score is None:
+                score = row.get("total_score")
             if key in by_name and score is not None:
                 figure_history.setdefault(key, []).append(float(score))
+
+        import json
 
         routine_history: dict[str, list[float]] = {}
         for row in routine_rows:
             athletes_in_routine = row.get("team_athletes") or []
+            if isinstance(athletes_in_routine, str):
+                try:
+                    athletes_in_routine = json.loads(athletes_in_routine)
+                except json.JSONDecodeError:
+                    athletes_in_routine = []
+            
             names = []
             for entry in athletes_in_routine:
                 if isinstance(entry, str):

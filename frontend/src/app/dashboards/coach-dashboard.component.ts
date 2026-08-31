@@ -1,12 +1,17 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { DashboardLayoutComponent } from './dashboard-layout.component';
 import { TypographyComponent } from '../shared/ui/typography.component';
 import { ErrorDisplayComponent } from '../shared/ui/error-display.component';
-import { TeamOverviewWidgetComponent, TeamOverviewData, TeamAthleteStat } from '../shared/widgets/team-overview/team-overview-widget.component';
+import { AuthService } from '../core/services/auth.service';
+import {
+  TeamOverviewWidgetComponent,
+  TeamOverviewData,
+  TeamAthleteStat,
+} from '../shared/widgets/team-overview/team-overview-widget.component';
 import {
   FigureHeatmapWidgetComponent,
   FigureHeatmapData,
@@ -114,6 +119,8 @@ interface DashboardResponse {
 })
 export class CoachDashboardComponent implements OnInit {
   private http = inject(HttpClient);
+  private authService = inject(AuthService);
+  private cdr = inject(ChangeDetectorRef);
 
   teamOverview: TeamOverviewData | null = null;
   heatmap: FigureHeatmapData | null = null;
@@ -141,22 +148,31 @@ export class CoachDashboardComponent implements OnInit {
     try {
       const [dashboardRes, heatmapRes] = await Promise.all([
         firstValueFrom(
-          this.http.get<DashboardResponse>(`${environment.apiUrl}/api/analytics/dashboard`)
+          this.http.get<DashboardResponse>(`${environment.apiUrl}/analytics/dashboard`)
         ),
         firstValueFrom(
-          this.http.get<FigureHeatmapData>(`${environment.apiUrl}/api/analytics/team/heatmap`)
+          this.http.get<FigureHeatmapData>(`${environment.apiUrl}/analytics/team/heatmap`)
         ),
       ]);
       this.teamOverview = dashboardRes.widgets?.team_overview ?? null;
+
       this.heatmap = heatmapRes;
       if (!this.selected && this.teamOverview?.athletes.length) {
         this.selected = this.teamOverview.athletes[0];
       }
-    } catch {
-      this.loadError =
-        'Could not load dashboard data. Check your connection and try again.';
+
+      console.log('Loaded dashboard data:', dashboardRes, heatmapRes);
+    } catch (err) {
+      if (err instanceof HttpErrorResponse && (err.status === 401 || err.status === 403)) {
+        // Stale/invalid session token: clear it and force a fresh login instead
+        // of showing an empty dashboard.
+        this.authService.logout();
+        return;
+      }
+      this.loadError = 'Could not load dashboard data. Check your connection and try again.';
     } finally {
       this.loading = false;
+      this.cdr.detectChanges();
     }
   }
 }

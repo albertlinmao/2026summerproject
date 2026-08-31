@@ -34,10 +34,12 @@ export interface TeamOverviewData {
       @if (loading) {
         <app-loading-spinner label="Loading team overview"></app-loading-spinner>
       } @else if (!overview) {
+        <span>{{ overview }} overview</span>
         <app-typography variant="body-medium" color="on-surface-variant">
           No team data available.
         </app-typography>
       } @else {
+        <span>{{ overview.athletes.length }} athletes</span>
         <ul class="athlete-list" aria-label="Team athletes">
           @for (athlete of overview.athletes; track athlete.athlete_id) {
             <li>
