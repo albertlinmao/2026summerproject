@@ -93,7 +93,9 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
           <!-- Logo/Brand -->
           <div class="toolbar-brand" routerLink="/">
             <img src="/icons/as_dashboard_logo.png" alt="Logo" class="toolbar-brand-logo" />
-            <span class="toolbar-brand-text"><span class="brand-ez">ez</span> ArtisticSwimming</span>
+            <span class="toolbar-brand-text"
+              ><span class="brand-ez">ez</span> ArtisticSwimming</span
+            >
           </div>
 
           <button
@@ -176,6 +178,10 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
             <button mat-menu-item routerLink="/dashboard/results">
               <app-icon matMenuItemIcon name="score"></app-icon>
               <span>Competition Scores</span>
+            </button>
+            <button mat-menu-item routerLink="/dashboard/athlete-figure">
+              <app-icon matMenuItemIcon name="trending_up"></app-icon>
+              <span>Athlete Figure Trend</span>
             </button>
             <button mat-menu-item routerLink="/dashboard/results/pdf">
               <app-icon matMenuItemIcon name="picture_as_pdf"></app-icon>
@@ -283,12 +289,58 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
       .toolbar {
         height: 64px;
         background: var(--md-sys-color-surface);
-        border-bottom: 1px solid var(--md-sys-color-outline-variant);
         position: sticky;
         top: 0;
         z-index: var(--md-sys-z-index-sticky);
         align-items: flex-end;
         padding-bottom: 0;
+      }
+
+      .toolbar::before {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 10px;
+        background: linear-gradient(
+          90deg,
+          #e0f2fe 0%,
+          #bae6fd 25%,
+          #f0f9ff 50%,
+          #7dd3fc 75%,
+          #e0f2fe 100%
+        );
+        box-shadow:
+          0 2px 4px rgba(125, 211, 252, 0.4),
+          inset 0 1px 1px rgba(255, 255, 255, 0.8),
+          inset 0 -1px 1px rgba(56, 189, 248, 0.3);
+      }
+
+      .toolbar::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: -100%;
+        width: 200%;
+        height: 10px;
+        background: linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0) 0%,
+          rgba(255, 255, 255, 0.6) 50%,
+          rgba(255, 255, 255, 0) 100%
+        );
+        animation: liquid-flow 6s infinite linear;
+        pointer-events: none;
+      }
+
+      @keyframes liquid-flow {
+        0% {
+          transform: translateX(0);
+        }
+        100% {
+          transform: translateX(30%);
+        }
       }
 
       .toolbar-brand {
@@ -322,7 +374,11 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
         font-size: 1.5rem;
         font-weight: 600;
         letter-spacing: 0.5px;
-        background: linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-secondary));
+        background: linear-gradient(
+          135deg,
+          var(--md-sys-color-primary),
+          var(--md-sys-color-secondary)
+        );
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;

@@ -50,12 +50,12 @@ export const routes: Routes = [
           ),
       },
       {
-        path: 'club-admin',
+        path: 'athlete-figure',
         canActivate: [roleGuard],
-        data: { roles: ['Club Admin', 'Club Owner'] },
+        data: { roles: ['Coach', 'Lead Coach', 'Club Admin', 'Club Owner'] },
         loadComponent: () =>
-          import('./dashboards/club-admin/club-admin-dashboard.component').then(
-            (m) => m.ClubAdminDashboardComponent
+          import('./dashboards/athlete-figure-dashboard/athlete-figure-dashboard.component').then(
+            (m) => m.AthleteFigureDashboardComponent
           ),
       },
     ],

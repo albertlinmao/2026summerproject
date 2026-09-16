@@ -325,3 +325,103 @@ async def get_figures_for_athlete(meet_id: str, athlete_name: str, user: dict = 
                 })
     return SingleResponse(data=data)
 
+
+@router.get("/clubs", response_model=SingleResponse[List[dict]])
+async def get_clubs(user: dict = Depends(get_current_user)):
+    """List all clubs from the as_club table."""
+    supabase = get_supabase()
+    result = supabase.table("as_club").select("id, name, code").order("name").execute()
+    data = [
+        {"id": r["id"], "name": r["name"], "code": r.get("code", "")}
+        for r in (result.data or [])
+    ]
+    return SingleResponse(data=data)
+
+
+@router.get("/clubs/{club_id}/athletes", response_model=SingleResponse[List[dict]])
+async def get_club_athletes(club_id: str, user: dict = Depends(get_current_user)):
+    """List athletes belonging to a club."""
+    import uuid
+    try:
+        uuid.UUID(str(club_id))
+    except ValueError:
+        return SingleResponse(data=[])
+
+    supabase = get_supabase()
+    result = supabase.table("as_athlete").select("id, name").eq("club_id", club_id).order("name").execute()
+    data = [
+        {"id": r["id"], "name": r["name"]}
+        for r in (result.data or [])
+    ]
+    return SingleResponse(data=data)
+
+
+@router.get("/athletes/{athlete_name}/figure-history", response_model=SingleResponse[List[dict]])
+async def get_athlete_figure_history(athlete_name: str, user: dict = Depends(get_current_user)):
+    """Get figure scores for an athlete across all competitions (meets)."""
+    import json
+
+    supabase = get_supabase()
+
+    # Fetch all figure result rows for the athlete
+    result = supabase.table("as_meet_figure_result") \
+        .select("*") \
+        .eq("athlete_name", athlete_name) \
+        .execute()
+
+    # Pre-fetch all relevant meets to avoid N+1 queries
+    meet_ids = list({r.get("meet_id") for r in (result.data or []) if r.get("meet_id")})
+    meet_map = {}
+    event_map = {}
+    if meet_ids:
+        meets_res = supabase.table("as_meet").select("id, name, meet_date, event_id").in_("id", meet_ids).execute()
+        for m in (meets_res.data or []):
+            meet_map[m["id"]] = m
+        event_ids = list({m.get("event_id") for m in meet_map.values() if m.get("event_id")})
+        if event_ids:
+            events_res = supabase.table("as_event").select("id, event_name").in_("id", event_ids).execute()
+            for e in (events_res.data or []):
+                event_map[e["id"]] = e
+
+    data = []
+    for r in (result.data or []):
+        meet_id = r.get("meet_id")
+        team_code = r.get("team_code")
+        team_name = r.get("team_name", "")
+        total_score = r.get("total_score")
+        figure_score = r.get("figure_score")
+
+        # Look up meet info
+        meet_info = meet_map.get(meet_id, {}) if meet_id else {}
+        meet_name = meet_info.get("name", "")
+        meet_date = meet_info.get("meet_date")
+
+        # Look up event name
+        event_info = event_map.get(meet_info.get("event_id"), {}) if meet_info else {}
+        event_name = event_info.get("event_name", "")
+
+        # Parse figure_scores (dict of figure_name -> score)
+        figure_scores = r.get("figure_scores", {})
+        if isinstance(figure_scores, str):
+            try:
+                figure_scores = json.loads(figure_scores)
+            except (json.JSONDecodeError, TypeError):
+                figure_scores = {}
+
+        data.append({
+            "meetId": meet_id,
+            "meetName": meet_name,
+            "meetDate": str(meet_date) if meet_date else None,
+            "eventName": event_name,
+            "teamCode": team_code,
+            "teamName": team_name,
+            "totalScore": total_score,
+            "figureScore": figure_score,
+            "figureScores": figure_scores
+        })
+
+    # Sort by meet date (chronological)
+    data.sort(key=lambda x: x.get("meetDate") or "", reverse=False)
+
+    return SingleResponse(data=data)
+

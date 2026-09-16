@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = Field(
         # Accept both hostnames - browsers may treat localhost and 127.0.0.1
         # as different origins depending on which URL the SPA is opened from.
-        default=["http://localhost:4200", "http://127.0.0.1:4200"],
+        default=["http://localhost:4200", "http://127.0.0.1:4200", "http://localhost:8081", "http://127.0.0.1:8081", "http://localhost"],
         validation_alias="CORS_ORIGINS"
     )
 

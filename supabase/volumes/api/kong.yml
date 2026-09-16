@@ -267,6 +267,32 @@ services:
       #      - ::1
       #    deny: []
 
+  ## Secure User Management routes
+  - name: user-mgmt-v1
+    _comment: 'User Management: /api/user-management/v1/* -> http://user-management-backend:8080/api/v1/*'
+    url: http://user-management-backend:8080/api/v1/
+    routes:
+      - name: user-mgmt-v1-all
+        strip_path: true
+        paths:
+          - /api/user-management/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - X-Internal-Secret:$GATEWAY_PSK
+
   ## Protected Dashboard - catch all remaining routes
   - name: dashboard
     _comment: 'Studio: /* -> http://studio:3000/*'

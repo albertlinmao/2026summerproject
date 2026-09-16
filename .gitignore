@@ -54,6 +54,7 @@ Thumbs.db
 # Supabase
 .supabase/
 supabase/.temp/
+supabase/volumes/db/data/
 
 # Testing
 coverage/

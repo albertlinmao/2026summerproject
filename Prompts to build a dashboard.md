@@ -12,6 +12,89 @@
 ---
 
 <details>
+<summary><h2>2026-09-03 Integration with User Management Platform</h2></summary>
+
+1. build docker deployment scripts to deploy the dashboard, python backend to docker desktop
+2. build docker deployment script to deploy user management service to docker desktop
+   - add user management service to SuperBase API gateway.
+   - prompt: - verify and update the script to create the API in SuperBase API Gateway. supabase\enable-user-management-gateway.ps1 and supabase\enable-user-management-gateway.sh. - add the User Management Service to SuperBase API gateway, the API is defined in swagger api\user-management\specs\001-multi-tenant-user-api\contracts\openapi.yaml. - implementation: api\user-management\backend - Deployed on Docker desktop with the console log as below.
+     --- Console log
+     .venv) PS C:\Users\linma\workspace\02-learning-AI\2026summerproject\api\user-management\backend> docker-compose up
+     time="2026-09-07T08:57:10-07:00" level=warning msg="C:\\Users\\linma\\workspace\\02-learning-AI\\2026summerproject\\api\\user-management\\backend\\docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+     [+] up 1/1
+     ✔ Container user-management-backend Created 0.1s
+     Attaching to user-management-backend
+     user-management-backend | INFO: Will watch for changes in these directories: ['/app']
+     user-management-backend | INFO: Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+     user-management-backend | INFO: Started reloader process [1] using StatReload
+     user-management-backend | INFO: Started server process [8]
+     user-management-backend | INFO: Waiting for application startup.
+     user-management-backend | INFO: Application startup complete.
+
+---
+
+1. modify the dashboard api integrated with Docker endpoint instead of localhost
+2. Integrate with dashboard user club/coach/athlete/parent with user management service
+   1. a Club will a tenant in user management service
+   2. A club has coaches, athletes, parents. Coach, athlete and parent is user in the tenat's user in user management service, the mapping is controlled by a as_user_mapping table
+   3. A club has a lead coach, and owners. A club has different teams, each team has a lead coach, and a team could have a captain, and athletes. An athlete could belong to teams.
+   4. tenant admins will be able to approve and activate a user. Until a registed uses gets approved, he/she will be able to login to the app.
+
+```text
+
+Done. Changes made:
+1. api/user-management/backend/docker-compose.yml:8 — host port now 28081:8080.
+2. supabase/volumes/api/kong.yml:270-294 — added secured user-mgmt-v1 service: /api/user-management/v1/* → http://user-management-backend:8080/, with key-auth + ACL + a request-transformer that injects X-Internal-Secret (the backend's verify_gateway_psk in src/core/security.py:5 requires it).
+3. supabase/docker-compose.yml:88 — Kong container now receives GATEWAY_PSK env (needed by its startup shell-substitution of kong.yml).
+4. supabase/.env:49-52 — added GATEWAY_PSK=my_local_psk (matches backend .env).
+5. supabase/enable-user-management-gateway.sh — new idempotent script that syncs GATEWAY_PSK, ensures the Kong route + compose env exist, recreates the backend (to apply port 28081) and Kong, waits for health, and smoke-tests.
+Verified: kong config parse passes, compose configs render, bash syntax OK. Note: the route stays disabled until you run the script — want me to run it now to fully enable access?
+Access after running:
+- via Kong: http://localhost:8000/api/user-management/v1/ (header apikey: <ANON_KEY|SERVICE_ROLE_KEY>)
+- direct: http://localhost:28081
+
+
+I have updated the port mappings in the docker-compose.yml file.
+The application will now be available on the following local ports:
+- Dashboard (Frontend): http://localhost:8081 (mapped to internal Nginx port 80)
+- Python API (Backend): http://localhost:18081 (mapped to internal Uvicorn port 8000)
+Since the frontend and backend communicate via Docker's internal network (on ports 80 and 8000 respectively), no changes were needed in the proxy configurations. You can restart the stack by running:
+docker-compose up --build
+
+I have created the Docker deployment scripts to run both the Angular frontend and the FastAPI Python backend on Docker Desktop.
+Here is what was added:
+1. frontend/Dockerfile: A multi-stage build that compiles the Angular app (npm run build) and serves it using Nginx. It also includes an Nginx reverse proxy to route calls from /api/* to the Python backend container (similar to how proxy.conf.json works locally).
+2. backend/Dockerfile: A slim Python 3.11 container that installs dependencies from requirements.txt and runs the FastAPI app using Uvicorn.
+3. docker-compose.yml: A root-level orchestration script that ties the frontend, backend, and a redis container together in a shared Docker network, ensuring environment variables like Supabase keys are passed down seamlessly.
+How to Deploy to Docker Desktop:
+Ensure Docker Desktop is running, then run the following command from the root of your project:
+docker-compose up --build
+- Your Dashboard (Frontend) will be available at: http://localhost:80
+- Your Python API (Backend) will be available at: http://localhost:8000
+(Note: Ensure your .env variables like OPENAI_API_KEY, SUPABASE_URL, and SUPABASE_KEY are populated correctly in the root folder before starting the stack)
+
+```
+
+</details>
+
+---
+
+<details>
+<summary><h2>2026-08-31</h2></summary>
+
+create a Python script to load non-duplicated athlete and club from table as_meet_figure_result, and as_meet_rountin_result, based on team_code on the 2 tables. Once one team_code exists in the as_club table, don't need to insert a different name to the as club table. Use the as_club.id to insert athlete to as_athlete table.
+
+change dashboard/athlete-figure to load Club dropdown from the as_club table, then use the club id to list all athletes in the club, the list the athlete's figure scores from all competitions
+
+```text
+
+```
+
+</details>
+
+---
+
+<details>
 <summary><h2>2026-08-27</h2></summary>
 
 OOTO at home. Want to add data integration function to the dashboard. After manually load competition result, build an admin page to sort the data
@@ -36,7 +119,8 @@ build an admin page to browse the competition results
 2. the tool shold be able to upload the PDF to Superbase, and create a meta data table for the PDF, it should have fields for fileName, competition name, competition date, host city, tags.
 
 ```text
-
+Status: check in to a new branch - feature/implentation_story2
+create a menu bar, add competition score to menu item:Resources->Competition Scores
 ```
 
 </details>
