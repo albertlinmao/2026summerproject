@@ -210,7 +210,7 @@ def parse_figure_pdf_text(text: str) -> Dict[str, Any]:
                 "athlete_birth_year": None,
                 "penalty": None,
                 "total_score": None,
-                "routine_score": None,
+                "figure_score": None,
                 "figure_results": [],
             }
 
@@ -257,11 +257,11 @@ def parse_figure_pdf_text(text: str) -> Dict[str, Any]:
                             "figure_number": figure_number,
                             "judge_scores": judge_scores,
                             "total_score": fig_total,
-                            "routine_score": overall_total if overall_total is not None else 0
+                            "figure_score": overall_total if overall_total is not None else 0
                         }
                         
                         if overall_total is not None:
-                            athlete["routine_score"] = overall_total
+                            athlete["figure_score"] = overall_total
                             
                         athlete["figure_results"].append(figure_item)
                 i += 1
@@ -374,7 +374,7 @@ def insert_rows_to_supabase(payload: Dict[str, Any], source_file: str, dry_run: 
                 "athlete_birth_year": athlete.get("athlete_birth_year"),
                 "penalty": athlete.get("penalty"),
                 "total_score": athlete.get("total_score"),
-                "routine_score": athlete.get("routine_score"),
+                "figure_score": athlete.get("figure_score"),
                 "figure_scores": athlete.get("figure_results", []),
                 "source_file": source_file
             })
