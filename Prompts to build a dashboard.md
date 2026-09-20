@@ -12,6 +12,34 @@
 ---
 
 <details>
+<summary><h2>2026-09-20</h2></summary>
+
+1. rearchitect the design to integrate dashboard user club/coach/athlete/parent with the user management service (design doc only, no code)
+   - approval gate: an unapproved registed user cannot login until a club admin approves
+   - user management service owns the org model (clubs, mapping, teams, family links); dashboard keeps lightweight as_* mirrors
+   - Result: specs\002-club-user-integration\design.md
+2. simplify and rename as_user_mapping to user_status - remove id and club_id, keyed on user_id
+3. create table as_club_member (used id = user_profile.id as primary key, fields: first_name, last_name, email, role (ATHLETE, COACH, OWNER, PARENT), status (ACTIVE, INACTIVE, SOFT_DELETED), updated_by, created, last_updated)
+4. add club_id to as_club_member to point to as_club table, the id field in as_club table should be the same as tenant.id
+5. create a script in init to add default permissions to the permission table - GLOBAL_ADMIN (system admin), PLATFORM_ENGINEER (user management system developer), ORG_ADMIN (tenant admin), ORG_USER (tenant user), ORG_GUEST (default visitor, no login needed), and add API key design (tenant_api_keys table with key_prefix + secret_hash)
+
+```text
+Done. Changes made:
+1. specs/002-club-user-integration/design.md - new rearchitecture design (target architecture, data model, JWT claims, API design, E2E flows, frontend, sync, security, roadmap A-D).
+2. design.md 4.1 - as_user_mapping renamed to user_status (user_id PK, role_type COACH/ATHLETE/PARENT, status PENDING/APPROVED/REJECTED/SUSPENDED); id and club_id removed.
+3. design.md 4.1 - added as_club_member roster table (PK = user_profile.id, first_name/last_name/email, role ATHLETE/COACH/OWNER/PARENT, status ACTIVE/INACTIVE/SOFT_DELETED, updated_by, created, last_updated) + reconciliation table for user_profile / user_status / as_club_member.
+4. design.md 4.1 - added as_club (id = tenant.id), as_club_member.club_id references as_club(id) with index idx_as_club_member_club; flagged the 4.2 mirror note (dashboard as_club.id = tenant uuid).
+5. api/user-management/supabase/init/seed_permissions.sql - idempotent seed of default permissions mapped to (resource, action): (GLOBAL, ADMIN), (PLATFORM, ENGINEER), (ORG, ADMIN), (ORG, USER), (ORG, GUEST).
+6. api/user-management/supabase/init/tenant_api_keys.sql - tenant-scoped API keys DDL (key_prefix, secret_hash, status active/revoked/expired, expires_at, last_used_at), active-prefix index, RLS enabled.
+7. design.md 4.4 API keys + 4.5 default permissions sections added.
+Status: design/DDL-stage only; pending user review of design.md before Phase A (implementation) starts.
+```
+
+</details>
+
+---
+
+<details>
 <summary><h2>2026-09-03 Integration with User Management Platform</h2></summary>
 
 1. build docker deployment scripts to deploy the dashboard, python backend to docker desktop
