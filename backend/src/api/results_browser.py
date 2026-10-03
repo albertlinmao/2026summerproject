@@ -1,21 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Path as PathParam
 from fastapi.responses import FileResponse
-from typing import Optional, List
+from typing import List
 from pathlib import Path
 import os
 
 from src.api.schemas import ListResponse, SingleResponse, PaginatedResponse
-from src.core.auth import get_current_user, get_club_id
+from src.core.auth import get_current_user, get_default_club_id
 from src.core.database import get_supabase
+from src.services.analytics.analytics_service import AnalyticsService, get_analytics_service
 
 router = APIRouter(prefix="/results", tags=["results-browser"])
 
 
 @router.get("/tree", response_model=SingleResponse[dict])
 async def get_results_tree(
-    user: dict = Depends(get_current_user),
-    club_id: Optional[str] = Depends(get_club_id)
+    user: dict = Depends(get_current_user)
 ):
     """
     Get competition results browser tree structure mirroring swim-meets folder hierarchy.
@@ -102,15 +102,15 @@ async def get_figure_results(
     meet_id: str = PathParam(..., description="Meet UUID"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    user: dict = Depends(get_current_user),
-    club_id: Optional[str] = Depends(get_club_id)
+    user: dict = Depends(get_current_user)
 ):
     """Get paginated figure results for a specific meet."""
     supabase = get_supabase()
+    club_id = get_default_club_id(user)
     
     query = supabase.table("as_meet_figure_result").select("*", count="exact").eq("meet_id", meet_id)
     
-    # Apply club filter if user has club_id
+    # Apply club filter if the caller has a club
     if club_id:
         query = query.eq("team_code", club_id)
     
@@ -132,15 +132,15 @@ async def get_routine_results(
     meet_id: str = PathParam(..., description="Meet UUID"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    user: dict = Depends(get_current_user),
-    club_id: Optional[str] = Depends(get_club_id)
+    user: dict = Depends(get_current_user)
 ):
     """Get paginated routine results for a specific meet."""
     supabase = get_supabase()
+    club_id = get_default_club_id(user)
     
     query = supabase.table("as_meet_routine_result").select("*", count="exact").eq("meet_id", meet_id)
     
-    # Apply club filter if user has club_id
+    # Apply club filter if the caller has a club
     if club_id:
         query = query.eq("team_code", club_id)
     
@@ -298,6 +298,13 @@ async def get_routines_for_team(meet_id: str, team_code: str, user: dict = Depen
 
 @router.get("/meets/{meet_id}/athletes/{athlete_name}/figures", response_model=SingleResponse[List[dict]])
 async def get_figures_for_athlete(meet_id: str, athlete_name: str, user: dict = Depends(get_current_user)):
+    """Figure scores for one athlete at one meet.
+
+    ``athlete_name`` is a printed name from the source PDF, so it is ambiguous
+    between two swimmers of the same name. Kept for compatibility and superseded
+    by ``as_result_person_link``: new work should key on ``person_id``. See
+    identity-contract.md §7.
+    """
     import uuid
     try:
         uuid.UUID(str(meet_id))
@@ -339,26 +346,38 @@ async def get_clubs(user: dict = Depends(get_current_user)):
 
 
 @router.get("/clubs/{club_id}/athletes", response_model=SingleResponse[List[dict]])
-async def get_club_athletes(club_id: str, user: dict = Depends(get_current_user)):
-    """List athletes belonging to a club."""
+async def get_club_athletes(
+    club_id: str,
+    user: dict = Depends(get_current_user),
+    analytics: AnalyticsService = Depends(get_analytics_service)
+):
+    """List the people holding an active swimmer membership in a club.
+
+    Club scope is resolved through ``as_club_membership`` rather than by
+    filtering the ``as_athlete`` view, which spans clubs and has no club_id.
+    """
     import uuid
     try:
         uuid.UUID(str(club_id))
     except ValueError:
         return SingleResponse(data=[])
 
-    supabase = get_supabase()
-    result = supabase.table("as_athlete").select("id, name").eq("club_id", club_id).order("name").execute()
     data = [
-        {"id": r["id"], "name": r["name"]}
-        for r in (result.data or [])
+        {"id": s.person_id, "name": s.name}
+        for s in sorted(analytics.get_club_swimmers(club_id), key=lambda s: s.name)
     ]
     return SingleResponse(data=data)
 
 
 @router.get("/athletes/{athlete_name}/figure-history", response_model=SingleResponse[List[dict]])
 async def get_athlete_figure_history(athlete_name: str, user: dict = Depends(get_current_user)):
-    """Get figure scores for an athlete across all competitions (meets)."""
+    """Get figure scores for an athlete across all competitions (meets).
+
+    ``athlete_name`` is a printed name from the source PDF, so it is ambiguous
+    between two swimmers of the same name. Kept for compatibility and superseded
+    by ``as_result_person_link``: new work should key on ``person_id``. See
+    identity-contract.md §7.
+    """
     import json
 
     supabase = get_supabase()

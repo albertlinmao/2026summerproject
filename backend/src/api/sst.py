@@ -39,6 +39,9 @@ def get_sst_scores():
             meet_name = rout.get('as_meet', {}).get('name') if rout.get('as_meet') else 'Unknown Meet'
             results.append({
                 'team': {'name': rout.get('team_name')},
+                # Display label only: a routine is scored for the whole team, so
+                # there is no single person to name. Not an identifier, and not a
+                # person_id — resolve rows to people via as_result_person_link.
                 'athlete_name': 'Team/Routine', # Routines usually belong to the whole team, or we'd parse team_athletes
                 'swim_game': {
                     'name': meet_name,

@@ -16,8 +16,13 @@ This guide provides the exact steps to generate the demo data, authenticate as C
 
 ```bash
 # From the project root, ensure dependencies are installed (e.g., psycopg2)
-python generate_demo_data.py
+# Credentials come from the environment - copy .env.example to .env first.
+python scripts/tmp/AdhocDataMigration/generate_demo_data.py
 ```
+
+The script also writes `as_result_person_link` rows, which is what makes the
+seeded scores attributable to a person. Afterwards refresh the materialized
+view: `SELECT refresh_as_daily_aggregations();`
 
 **Expected Output:**
 You should see a printout confirming the creation of the athletes, their predictive insights, their coaching recommendations, and the creation of Coach Sophie Lin:
@@ -45,7 +50,22 @@ Athlete: Emma Johnson, Predicted Score: 62.45, Plateau Risk: False, Weakest Figu
 
 **Expected Result:**
 - The system successfully authenticates and routes you to the **Coach Dashboard** (`/dashboards/coach`).
-- The JWT is stored in local storage, containing the `club_id` for Seattle Synchro (SST) and the role `Coach`.
+- The JWT is stored in local storage. Its claims are:
+
+  ```json
+  {
+    "sub": "…",
+    "iss": "001-multi-tenant-user-api",
+    "aud": "artistic-swimming-dashboard",
+    "person_id": "…",
+    "club_ids": ["…"],
+    "roles_by_club": { "…": ["coach"] },
+    "permissions": []
+  }
+  ```
+
+  - `sub` is the only authoritative claim and must match an `as_person_identity.subject_id`; `person_id`, `club_ids`, and `roles_by_club` are a UI cache. The scalar `club_id` and `athlete_ids` claims no longer exist.
+- The coach view itself is granted by an `as_club_membership` row with `role = coach` and `status = active` for Seattle Synchro (SST). If the cached claims disagree with the membership rows, membership wins.
 
 ## Step 3: Verify the Coach Dashboard Widgets
 
@@ -67,7 +87,20 @@ On the Coach Dashboard view, verify the following elements load correctly within
 - With the athlete still selected, locate the AI Recommendation widget.
 - Verify it displays the natural language suggestion (e.g., "Focus on vertical extension and control during the Kip...").
 
-## Step 4: Logout
+## Step 4: Verify Family-Access Denial (FR-007)
+
+1. **Action:** As Coach Sophie Lin, open the Video Analysis widget and upload a short MP4 of Emma Johnson, passing her `person_id` to `/uploads/sign`.
+2. **Expected Result:** The upload completes and the video is listed with its markers.
+
+3. **Action:** Sign out and sign in as a demo parent (for example `dan.johnson@sst.example.com`) whose only relationship to Emma is an `as_person_link` row of kind `parent` in the SST club.
+4. **Expected Result:** The parent sees Emma's video but no other athlete's video. Emma herself needs no account — she is an `as_person` row with a guardian edge.
+
+5. **Action:** Sign in as a `coach` membership holder from a *different* club (no `as_person_link` to Emma in SST).
+6. **Expected Result:**
+   - The video list omits Emma's video, and a direct `GET` of the video, its markers, or the storage object returns **403 Forbidden** — access requires club staff, self, or a guardian link in that same club.
+   - A former swimmer (membership `status = dormant` or `left`) is likewise denied, because `app_can_view_video()` requires an `invited`/`active` membership, not merely an identity.
+
+## Step 5: Logout
 
 1. Locate the User Profile / Settings menu in the sticky navigation bar.
 2. Click **Logout**.

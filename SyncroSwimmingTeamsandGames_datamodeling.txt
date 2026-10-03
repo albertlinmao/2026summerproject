@@ -1,5 +1,90 @@
 Data Modeling
 
+Authoritative identity model: specs/001-analytics-dashboard/identity-contract.md
+A person is a human, a club is the tenant, and membership is the edge between
+them. Three rules drive everything below:
+  - A person has no club_id. Belonging to a club is a row in club_membership.
+  - A login is optional. Minors, dormant swimmers and alumni exist with no account.
+  - Roles are scoped per club: the same person may be a swimmer in club A and a
+    coach in club B. Authorization is always (person, club, role).
+
+Physical names carry the repository's as_ prefix: as_person, as_person_identity,
+as_club_membership, as_person_link, as_result_person_link. Logical names below are
+Person, Person Identity, Club Membership, Person Link, Result Person Link.
+
+Table: person
+id: UUID
+given_name: text not null
+family_name: text
+middle_name: text
+birth_date: date
+created_at:
+updated_at:
+NOTE: no club_id, no credentials. Index on lower(family_name), lower(given_name).
+
+Table: person_identity
+person_id: UUID - primary key, references person(id) on delete cascade
+subject_id: UUID - unique, not null
+created_at:
+NOTE: optional. Exactly one identity per person; a person may have none.
+subject_id is the only link to the identity provider and is matched against the
+verified `sub` claim. It is never a business key and never exposed in payloads.
+
+Table: club_membership
+id: UUID
+person_id: UUID - references person(id) on delete cascade
+club_id: UUID - references club(id)
+role: admin | coach | swimmer | parent | official
+title: free text, display only (Lead Coach, Team Captain, Club Owner).
+       Never used for authorization -- this is how the existing UI role
+       vocabulary survives the migration.
+status: invited | active | dormant | left.  invited/active grant access;
+        dormant/left do not.
+joined_at: date
+left_at: date
+created_at:
+updated_at:
+NOTE: the authorization source of truth. Partial unique index on
+(person_id, club_id, role) where status in ('invited','active'); indexes on
+(club_id, status) and (person_id).
+
+Table: person_link
+id: UUID
+parent_person_id: UUID - references person(id) on delete cascade
+child_person_id: UUID - references person(id) on delete cascade
+club_id: UUID - references club(id) on delete cascade
+kind: parent | guardian | emergency_contact
+created_at:
+NOTE: directed guardian edge, scoped to a club. This is what makes family-only
+video access expressible without forcing a login on minors. Replaces the old JWT
+athlete_ids claim, which went stale and could not express coach-of or self.
+check (parent_person_id <> child_person_id); index on (child_person_id, club_id, kind).
+
+Table: result_person_link
+id: UUID
+result_table: as_meet_figure_result | as_meet_routine_result
+result_id: UUID
+person_id: UUID - references person(id) on delete cascade
+athlete_name: text not null   (verbatim printed name, data lineage)
+confidence: numeric
+resolved_by: UUID - references person(id)
+resolved_at: timestamptz
+NOTE: maps immutable PDF result rows to a canonical person. athlete_name is
+required because as_meet_routine_result.team_athletes is a JSON array of names
+sharing one result_id, so the printed name is the only intra-row discriminator.
+Unique on (result_table, result_id, athlete_name); index on person_id. result_id
+carries no foreign key because the source is polymorphic across two result tables.
+
+View: athlete
+person_id, given_name, family_name, middle_name, birth_date, name
+NOTE: a VIEW over person + club_membership -- a swimmer is a person holding an
+active `swimmer` membership. Never insert into it.
+
+View: coach
+person_id, given_name, family_name, middle_name, name
+NOTE: a VIEW over person + club_membership -- a person holding an active `coach`
+(or `admin`) membership. Never insert into it.
+
 Table: club
 id: UUID
 name: SEATTLE SYNCHRONIZED SWIM TEAM 
@@ -10,7 +95,7 @@ website:
 email:
 created:
 updated:
-opid:
+created_by: UUID - references as_person(id)
 
 Table: team
 id: UUID
@@ -19,29 +104,34 @@ club: UUID - club id
 name: 12U-blue
 created:
 updated:
-opid:
+created_by: UUID - references as_person(id)
 
 Table: swimmer
-id: UUID
-fistname:
-lastname:
-midname:
-birthday:
-joined:
-active/dormant
-left:
-gender:
+NOTE: a swimmer is NOT its own table. A swimmer is a person holding an active
+`swimmer` membership in a club, i.e. an as_club_membership row with
+role='swimmer' and status in ('invited','active') -- which is exactly what the
+as_athlete view projects. The fields below remain the working draft of what the
+person + membership pair must express.
+id: UUID - as_person.id
+fistname: as_person.given_name
+lastname: as_person.family_name
+midname: as_person.middle_name
+birthday: as_person.birth_date
+joined: as_club_membership.joined_at
+active/dormant: as_club_membership.status
+left: as_club_membership.left_at
+gender: 
 created:
 updated:
-opid:
+created_by: UUID - references as_person(id)
 
 table: team_swimmer
 id: UUID
 team_id: UUID
-swimmer_id: UUID
+swimmer_id: UUID - as_person.id
 created:
 updated:
-op_id:
+created_by: UUID - references as_person(id)
 
 table: team_swimmer-history
 id: UUID

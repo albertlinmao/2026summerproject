@@ -27,7 +27,7 @@ import { LoadingSpinnerComponent } from '../../ui/loading-spinner.component';
 echarts.use([HeatmapChart, GridComponent, TooltipComponent, VisualMapComponent, CanvasRenderer]);
 
 export interface HeatmapAthleteRow {
-  athlete_id: string;
+  person_id: string;
   name: string;
   weaknesses: Record<string, number>;
   weakest_figure: string | null;

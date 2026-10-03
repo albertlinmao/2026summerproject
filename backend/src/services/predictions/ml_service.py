@@ -6,12 +6,12 @@ from src.models.insights import PredictiveInsight
 
 
 def predict_next_score(
-    athlete_id: str,
+    person_id: str,
     historical_scores: list[dict],
 ) -> PredictiveInsight:
     if len(historical_scores) < 2:
         return PredictiveInsight(
-            athlete_id=athlete_id,
+            person_id=person_id,
             next_score_prediction=70.0,
             plateau_risk=False,
             confidence_interval=5.0,
@@ -36,7 +36,7 @@ def predict_next_score(
     plateau_risk = flat
 
     return PredictiveInsight(
-        athlete_id=athlete_id,
+        person_id=person_id,
         next_score_prediction=round(prediction, 2),
         plateau_risk=plateau_risk,
         confidence_interval=confidence_interval,
@@ -55,13 +55,13 @@ def predict_baseline_average(club_id: str) -> float:
 
     rows = response.data or []
 
-    athletes_with_few_records = {}
+    scores_by_person = {}
     for row in rows:
-        athlete_id = row.get("athlete_id", "")
-        athletes_with_few_records.setdefault(athlete_id, []).append(row.get("score", 0))
+        person_id = row.get("person_id", "")
+        scores_by_person.setdefault(person_id, []).append(row.get("score", 0))
 
     sparse_averages = []
-    for aid, scores_list in athletes_with_few_records.items():
+    for pid, scores_list in scores_by_person.items():
         if len(scores_list) < 5:
             sparse_averages.append(np.mean(scores_list))
 

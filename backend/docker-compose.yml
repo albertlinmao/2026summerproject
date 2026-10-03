@@ -9,9 +9,10 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
 
-  # Supabase local stack usually relies on the Supabase CLI (`supabase init`, `supabase start`).
-  # We will use the CLI for Supabase and just define Redis here if needed,
-  # or assume the developer will run `supabase start` which spins up its own compose stack.
+  # The Supabase stack is NOT defined here. It is the self-hosted Docker Compose
+  # project in ../supabase, started with `docker compose up -d` from that
+  # directory - there is no Supabase CLI in this setup. This file only provides
+  # Redis. See backend/GETTING_STARTED.md for the stack's host ports.
 
 volumes:
   redis_data:

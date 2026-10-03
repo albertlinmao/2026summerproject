@@ -21,17 +21,23 @@ class Settings(BaseSettings):
 
     # Server
     HOST: str = "0.0.0.0"
+    # Container-internal port; docker-compose.yml publishes it as 18081. A local
+    # host run must override this (PORT=8080) because the Supabase stack's Kong
+    # already binds host port 8000.
     PORT: int = 8000
 
     # Supabase
-    SUPABASE_URL: str = Field(default="http://localhost:54321", validation_alias="SUPABASE_URL")
+    # Kong is the stack's only HTTP entry point, published on host port 8000 by
+    # supabase/docker-compose.yml (see supabase/.env). The Supabase CLI's 54321
+    # is not in use.
+    SUPABASE_URL: str = Field(default="http://localhost:8000", validation_alias="SUPABASE_URL")
     SUPABASE_ANON_KEY: str = Field(default="", validation_alias="SUPABASE_ANON_KEY")
     SUPABASE_SERVICE_ROLE_KEY: str = Field(default="", validation_alias="SUPABASE_SERVICE_ROLE_KEY")
     # Legacy/alternate name used by some .env files; fallback for the anon key
     SUPABASE_KEY: str = Field(default="", validation_alias="SUPABASE_KEY")
 
-    # Database (Supabase PostgreSQL)
-    DATABASE_URL: str = Field(default="postgresql://postgres:postgres@localhost:54322/postgres", validation_alias="DATABASE_URL")
+    # Database (Supabase PostgreSQL) - POSTGRES_PORT in supabase/.env
+    DATABASE_URL: str = Field(default="postgresql://postgres:postgres@localhost:5432/postgres", validation_alias="DATABASE_URL")
 
     # Redis
     REDIS_URL: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")

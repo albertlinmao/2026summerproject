@@ -1,16 +1,12 @@
-from pydantic import BaseModel
-from datetime import datetime
+"""Deprecated shim.
 
+``PredictiveInsight`` and ``CoachingRecommendation`` were defined twice — here and
+in the dedicated modules. The dedicated modules are canonical because they carry
+the field documentation; this file re-exports them so existing imports keep working.
 
-class PredictiveInsight(BaseModel):
-    athlete_id: str
-    next_score_prediction: float
-    plateau_risk: bool
-    confidence_interval: float
+Import from :mod:`src.models.predictive_insight` and
+:mod:`src.models.coaching_recommendation` instead.
+"""
 
-
-class CoachingRecommendation(BaseModel):
-    athlete_id: str
-    recommendation_text: str
-    generated_at: datetime
-    weakest_figure: str
+from src.models.coaching_recommendation import CoachingRecommendation  # noqa: F401
+from src.models.predictive_insight import PredictiveInsight  # noqa: F401

@@ -36,7 +36,7 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 - [x] T005 [P] Configure formatting: black (backend), prettier (frontend)
 - [x] T006 [P] Setup pytest with pytest-asyncio, pytest-cov for backend
 - [x] T007 [P] Setup Jest with @angular-builders/jest for frontend
-- [x] T008 [P] Configure Supabase CLI for local development and migrations
+- [x] T008 [P] Configure the self-hosted Supabase Docker Compose stack (`supabase/`) for local development and migrations
 - [x] T009 [P] Setup GitHub Actions CI workflow (lint, typecheck, test)
 - [x] T010 [P] Create .env.example with all required environment variables
 
@@ -52,10 +52,10 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 - [x] T012 [P] Apply existing Supabase tables migration (as_event, as_meet, as_figure, as_meet_judge_panel, as_meet_figure_result, as_meet_routine_result) from sql/create_figures_table.sql
 - [x] T013 [P] Create migration for dashboard-specific tables: video_uploads, video_markers, routine_timers, as_competition_results_browser_widgets, as_daily_aggregations (materialized view), as_predictive_insights, as_coaching_recommendations
 - [x] T014 [P] Configure Row Level Security (RLS) policies for club isolation on all tables
-- [x] T015 [P] Configure RLS for video_uploads with family-access predicate (athlete_id link, coach-of, parent-of via Multi-Tenant User Service claims)
+- [x] T015 [P] Configure RLS for video_uploads with family-access predicate (self / coach-of / guardian-of on `video_uploads.person_id`) — superseded by T119/T120, which resolve the same predicate from `as_club_membership` + `as_person_link` instead of Multi-Tenant User Service claims
 - [x] T016 Implement FastAPI app structure with lifespan, middleware, exception handlers
-- [x] T017 [P] Implement JWT authentication middleware (BearerAuth from Multi-Tenant User Service API)
-- [x] T018 [P] Implement role/claim extraction and club_id resolution from JWT
+- [x] T017 [P] Implement JWT authentication middleware (BearerAuth from Multi-Tenant User Service API; `sub` required)
+- [x] T018 [P] Implement claim extraction from JWT (`sub` → `as_person_identity.person_id`; `person_id`/`club_ids`/`roles_by_club` treated as a non-authoritative cache) and resolve club scope from `as_club_membership` rather than a scalar `club_id` claim
 - [x] T019 [P] Setup Redis client and caching utilities
 - [x] T020 Implement error handling and structured logging infrastructure
 - [x] T021 [P] Configure environment configuration management (pydantic-settings)
@@ -73,6 +73,28 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 
 ---
 
+## Phase 2A: Identity Model Migration — Person / Club / Membership (Blocking)
+
+**Purpose**: Replace the login-centric identity model (person carries `club_id`, `athlete_ids` claim) with the authoritative model in [identity-contract.md](identity-contract.md): a **person** is a human, a **club** is the tenant, **membership is the edge**, and a login is optional.
+
+**⚠️ CRITICAL**: No user story work can begin until this phase is complete. Task IDs continue from Phase 9 because they were added after the identity contract was adopted; they execute *before* Phases 3+.
+
+- [ ] T116 Create identity core tables in `backend/supabase/migrations/20260826_person_identity_migration.sql`: `as_person` (no `club_id`, no credentials), `as_person_identity` (`subject_id` unique, 0..1 per person), `as_club_membership` (`role` enum `admin|coach|swimmer|parent|official`, display-only `title`, `status` enum `invited|active|dormant|left`, partial unique index on `(person_id, club_id, role) where status in ('invited','active')`), `as_person_link` (guardian edge, `kind` enum `parent|guardian|emergency_contact`, `check (parent_person_id <> child_person_id)`), and `as_result_person_link`
+- [ ] T117 [P] Backfill `as_person` + `as_club_membership` from the legacy `as_athlete`/`as_coach` rows in `20260826_person_identity_migration.sql` (decompose the denormalized `name` into given/family and the `club_id` into membership rows); `as_person_identity` stays empty — no subject id was ever stored
+- [ ] T118 [P] Rename identity columns in `20260826_person_identity_migration.sql`: `*.athlete_id` → `*.person_id` (insights, recommendations, videos, `as_daily_aggregations`), `as_competition_results_browser_widgets.user_id` → `person_id`, `uploaded_by`/`created_by`/`resolved_by` FKs re-pointed from `auth.uid()` to `as_person(id)`; then drop the legacy tables
+- [ ] T119 [P] Create the `app_*()` RLS helpers in `20260826_person_identity_migration.sql` — `app_current_person_id()`, `app_active_memberships()`, `app_current_club_ids()`, `app_has_club_role(club, roles[])`, `app_is_club_staff(club)`, `app_is_guardian_of(parent, child, club)`, `app_visible_person_ids()`, `app_can_view_video(club, person)`, `app_can_edit_video(club, uploaded_by)` — all `stable security definer set search_path = ''` with fully-qualified names
+- [ ] T120 Recreate `as_athlete` and `as_coach` as VIEWS over `as_person` + `as_club_membership` (`person_id`, `name`, `birth_date`; no `club_id`) in `20260826_person_identity_migration.sql`
+- [ ] T121 Rewrite RLS policies on all dashboard tables to resolve club scope from `as_club_membership` via the T119 helpers (replacing `current_user_club_id()` and `jwt -> 'athlete_ids'`), and apply the identical family-access scope to Supabase Storage objects under `{club_id}/{person_id}/`
+- [ ] T122 Backfill `as_result_person_link` from `as_meet_figure_result.athlete_name`/`athlete_birth_year` and `as_meet_routine_result.team_athletes` (fuzzy name + birth year + `team_code`); leave ambiguous rows unresolved and excluded from aggregates, never guessed
+- [ ] T123 Populate `as_person_identity` from the subjects reported by the identity service (manual one-time insert; remains NULL for anyone who never logs in)
+- [ ] T124 [P] Update the `001-multi-tenant-user-api` claim contract (separate repo, `api/user-management`): drop the `athlete_ids` claim and the scalar `club_id` claim, require `sub`, and treat `person_id`/`club_ids`/`roles_by_club`/`permissions` as an optional cache — **BLOCKING DEPENDENCY**, see identity-contract.md §4
+- [ ] T125 [P] Change the identity service's `public.membership` unique constraint from `(tenant_id, user_id)` to `(tenant_id, user_id, role_id)` in `api/user-management/supabase/migrations/01_initial_schema.sql`; until this lands the dashboard behaves single-club (separate repo, BLOCKING)
+- [ ] T126 Reconcile `specs/001-analytics-dashboard/contracts/`: `openapi.yaml` is canonical; `api.yaml` and `api.yml` are subsets. Path identifier is `person_id`, request/response `athlete_id` → `person_id`, add the `Role` enum and `Person` schema, keep `athlete_name`/`athlete_birth_year`/`team_athletes` verbatim
+
+**Checkpoint**: Authorization resolves from membership; no `athlete_ids` or scalar `club_id` claim is read anywhere
+
+---
+
 ## Phase 3: User Story 1 - Coach Team Analysis & Prediction (Priority: P1) 🎯 MVP
 
 **Goal**: Deliver coach dashboard with team overview, figure weakness heatmap, and qualification predictions
@@ -82,12 +104,12 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 ### Implementation for User Story 1
 
 **Backend Models & Services**
-- [x] T031 [P] [US1] Create AthleteReference model in backend/src/models/athlete_ref.py (UUID, club_id, name)
-- [x] T032 [P] [US1] Create CoachReference model in backend/src/models/coach_ref.py (UUID, club_id, name)
+- [x] T031 [P] [US1] Create PersonReference model in backend/src/models/person_ref.py (UUID `person_id`, given_name, family_name, middle_name, birth_date; no `club_id`, no credentials)
+- [x] T032 [P] [US1] Create ClubMembershipReference model in backend/src/models/club_membership_ref.py (person_id, club_id, role, title, status, joined_at, left_at) as the authorization source of truth, plus the club-less Coach projection (person_id, name) it backs
 - [x] T033 [P] [US1] Create ClubReference model in backend/src/models/club_ref.py (UUID, name)
 - [x] T034 [P] [US1] Create CompetitionResult model in backend/src/models/as_competition_result.py (aggregation from as_meet_figure_result + as_meet_routine_result)
-- [x] T035 [P] [US1] Create PredictiveInsight model in backend/src/models/predictive_insight.py (athlete_id, next_score_prediction, plateau_risk, confidence_interval)
-- [x] T036 [P] [US1] Create CoachingRecommendation model in backend/src/models/coaching_recommendation.py (athlete_id, recommendation_text, generated_at, weakest_figure)
+- [x] T035 [P] [US1] Create PredictiveInsight model in backend/src/models/predictive_insight.py (person_id, next_score_prediction, plateau_risk, confidence_interval)
+- [x] T036 [P] [US1] Create CoachingRecommendation model in backend/src/models/coaching_recommendation.py (person_id, recommendation_text, generated_at, weakest_figure)
 - [x] T037 [US1] Implement AnalyticsService in backend/src/services/analytics/analytics_service.py (score distributions, ranking histories, figure radar chart data)
 - [x] T038 [US1] Implement MaterializedViewService in backend/src/services/analytics/materialized_view_service.py (on-demand refresh, caching for daily aggregations)
 - [x] T039 [US1] Implement PredictionService in backend/src/services/predictions/prediction_service.py (Phase 1: rolling averages, percentiles, std dev; Phase 2: linear regression, XGBoost)
@@ -95,8 +117,8 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 
 **Backend API Endpoints**
 - [x] T041 [US1] Implement GET /analytics/dashboard in backend/src/api/dashboard.py (role-based widget data aggregation)
-- [x] T042 [US1] Implement GET /analytics/athletes/{athlete_id}/prediction in backend/src/api/predictions.py (predictive insight endpoint)
-- [x] T043 [US1] Implement GET /analytics/athletes/{athlete_id}/recommendation in backend/src/api/recommendations.py (AI coach endpoint)
+- [x] T042 [US1] Implement GET /analytics/athletes/{person_id}/prediction in backend/src/api/predictions.py (predictive insight endpoint)
+- [x] T043 [US1] Implement GET /analytics/athletes/{person_id}/recommendation in backend/src/api/recommendations.py (AI coach endpoint)
 - [x] T044 [US1] Implement GET /analytics/team/heatmap in backend/src/api/team.py (figure weakness heatmap for coach's club)
 - [x] T045 [US1] Add validation, error handling, and logging for all US1 endpoints
 
@@ -124,15 +146,15 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 ### Implementation for User Story 2
 
 **Backend Services** (reuses models from US1)
-- [ ] T055 [US2] Extend AnalyticsService with athlete-specific trend queries (figure/routine trends over time, personal bests)
-- [ ] T056 [US2] Implement GET /analytics/athletes/{athlete_id}/progress in backend/src/api/athlete_progress.py (personal trends, bests)
+- [ ] T055 [US2] Extend AnalyticsService with person-specific trend queries (figure/routine trends over time, personal bests)
+- [ ] T056 [US2] Implement GET /analytics/athletes/{person_id}/progress in backend/src/api/athlete_progress.py (personal trends, bests)
 
 **Frontend Dashboard & Widgets**
 - [ ] T057 [P] [US2] Create PersonalProgressWidgetComponent in frontend/src/app/shared/widgets/personal-progress/ (ECharts line charts for figure/routine trends)
-- [ ] T058 [P] [US2] Create PersonalBestsWidgetComponent in frontend/src/app/shared/widgets/personal-bests/ (current PBs for figures and routines)
-- [ ] T059 [P] [US2] Reuse AIRecommendationWidgetComponent from US1 (shared component)
-- [ ] T060 [US2] Create SwimmerDashboardComponent in frontend/src/app/dashboards/swimmer-dashboard.component.ts (assembles widgets for athlete role)
-- [ ] T061 [US2] Implement dashboard routing and lazy-loading for athlete role
+- [ ] T058 [P] [US2] Create PersonalBestsWidgetComponent in frontend/src/app/shared/widgets/personal-bests/ (current PBs for figures and routines, scoped to the signed-in swimmer's `person_id`)
+- [ ] T059 [P] [US2] Reuse AIRecommendationWidgetComponent from US1 (shared component, same `/analytics/athletes/{person_id}/recommendation` endpoint)
+- [ ] T060 [US2] Create SwimmerDashboardComponent in frontend/src/app/dashboards/swimmer-dashboard.component.ts (assembles widgets for the `swimmer` membership role)
+- [ ] T061 [US2] Implement dashboard routing and lazy-loading for the `swimmer` role
 - [ ] T062 [US2] Apply extra-large typography and WCAG 2.1 AA contrast per DR-005/DR-007
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
@@ -156,8 +178,8 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 - [ ] T066 [P] [US3] Create ClubOverviewWidgetComponent in frontend/src/app/shared/widgets/club-overview/ (medal counts, retention rates, rankings)
 - [ ] T067 [P] [US3] Create CoachEffectivenessWidgetComponent in frontend/src/app/shared/widgets/coach-effectiveness/ (coach performance metrics)
 - [ ] T068 [P] [US3] Create AthleteRetentionWidgetComponent in frontend/src/app/shared/widgets/athlete-retention/ (retention trends)
-- [ ] T069 [US3] Create ClubAdminDashboardComponent in frontend/src/app/dashboards/club-admin-dashboard.component.ts (assembles widgets for club admin role)
-- [ ] T070 [US3] Implement dashboard routing and lazy-loading for club admin role
+- [ ] T069 [US3] Create ClubAdminDashboardComponent in frontend/src/app/dashboards/club-admin-dashboard.component.ts (assembles widgets for the `admin` membership role)
+- [ ] T070 [US3] Implement dashboard routing and lazy-loading for the `admin` role
 - [ ] T071 [US3] Apply extra-large typography and WCAG 2.1 AA contrast per DR-005/DR-007
 
 **Checkpoint**: At this point, User Stories 1, 2, AND 3 should all work independently
@@ -207,7 +229,7 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 **Backend Services** (models from Phase 2 migration)
 - [ ] T088 [P] [FR007] Create VideoUploadService in backend/src/services/media/video_upload.py (presigned URL flow: sign → client PUT → finalize with HEAD verification)
 - [ ] T089 [P] [FR007] Create VideoMarkerService in backend/src/services/media/video_marker.py (CRUD for markers, cascade delete with video)
-- [ ] T090 [US4] Implement POST /uploads/sign in backend/src/api/video_upload.py (validates size/type, athlete_id for family access)
+- [ ] T090 [US4] Implement POST /uploads/sign in backend/src/api/video_upload.py (validates size/type, `person_id` for family-access scope)
 - [ ] T091 [US4] Implement POST /uploads/finalize in backend/src/api/video_upload.py (verifies upload, creates video_uploads row)
 - [ ] T092 [US4] Implement GET/POST /videos/{video_id}/markers in backend/src/api/video_markers.py
 - [ ] T093 [US4] Configure Supabase pg_cron scheduled job for 90-day video retention (DELETE where created_at < now() - 90 days)
@@ -265,7 +287,8 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 ### Phase Dependencies
 
 - **Setup (Phase 1)**: No dependencies - can start immediately
-- **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
+- **Identity Model Migration (Phase 2A)**: Depends on Setup - BLOCKS all user stories (authorization must resolve from `as_club_membership` before any RLS or endpoint is correct)
+- **Foundational (Phase 2)**: Depends on Setup completion and Phase 2A for the RLS/claim tasks (T015, T018) - BLOCKS all user stories
 - **User Stories (Phase 3-8)**: All depend on Foundational phase completion
   - User stories can then proceed in parallel (if staffed)
   - Or sequentially in priority order (P1 → P2 → P3)
@@ -303,8 +326,8 @@ description: "Task list for Artistic Swimming Analytics Dashboard implementation
 
 ```bash
 # Launch all models for User Story 1 together:
-Task: "Create AthleteReference model in backend/src/models/athlete_ref.py"
-Task: "Create CoachReference model in backend/src/models/coach_ref.py"
+Task: "Create PersonReference model in backend/src/models/person_ref.py"
+Task: "Create ClubMembershipReference model in backend/src/models/club_membership_ref.py"
 Task: "Create ClubReference model in backend/src/models/club_ref.py"
 Task: "Create CompetitionResult model in backend/src/models/as_competition_result.py"
 Task: "Create PredictiveInsight model in backend/src/models/predictive_insight.py"
@@ -342,14 +365,15 @@ Task: "Create FigureRoutineTabComponent in frontend/src/app/shared/widgets/resul
 ### MVP First (User Story 1 Only)
 
 1. Complete Phase 1: Setup
-2. Complete Phase 2: Foundational (CRITICAL - blocks all stories)
-3. Complete Phase 3: User Story 1
-4. **STOP and VALIDATE**: Test User Story 1 independently (quickstart Scenario 1)
-5. Deploy/demo if ready
+2. Complete Phase 2A: Identity Model Migration (Person / Club / Membership)
+3. Complete Phase 2: Foundational (CRITICAL - blocks all stories)
+4. Complete Phase 3: User Story 1
+5. **STOP and VALIDATE**: Test User Story 1 independently (quickstart Scenario 1)
+6. Deploy/demo if ready
 
 ### Incremental Delivery
 
-1. Complete Setup + Foundational → Foundation ready
+1. Complete Setup + Phase 2A + Foundational → Foundation ready
 2. Add User Story 1 → Test independently → Deploy/Demo (MVP!)
 3. Add User Story 2 → Test independently → Deploy/Demo
 4. Add User Story 4 → Test independently → Deploy/Demo

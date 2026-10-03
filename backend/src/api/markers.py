@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from uuid import UUID
 
-from src.api.auth import verify_jwt
+from src.core.auth import get_current_person_id, get_current_user
 from src.core.database import supabase
 from src.models.media import VideoMarkerInput
 
@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 @router.get("/videos/{video_id}/markers")
-def get_markers(video_id: UUID, user_payload: dict = Depends(verify_jwt)):
+def get_markers(video_id: UUID, user: dict = Depends(get_current_user)):
     resp = supabase.table("as_video_markers") \
         .select("*") \
         .eq("video_id", str(video_id)) \
@@ -19,9 +19,13 @@ def get_markers(video_id: UUID, user_payload: dict = Depends(verify_jwt)):
 
 
 @router.post("/videos/{video_id}/markers")
-def create_marker(video_id: UUID, marker: VideoMarkerInput, user_payload: dict = Depends(verify_jwt)):
-    user_id = user_payload.get("uid")
-
+def create_marker(
+    video_id: UUID,
+    marker: VideoMarkerInput,
+    created_by: str = Depends(get_current_person_id),
+):
+    # created_by is a person, not a login subject: a coach who never signs in
+    # is still the author of the marker.
     video_resp = supabase.table("as_video_uploads") \
         .select("id") \
         .eq("id", str(video_id)) \
@@ -37,7 +41,7 @@ def create_marker(video_id: UUID, marker: VideoMarkerInput, user_payload: dict =
         "marker_type": marker.marker_type,
         "figure_id": marker.figure_id,
         "label": marker.label,
-        "created_by": user_id,
+        "created_by": created_by,
     }).execute()
 
     return insert_resp.data[0] if insert_resp.data else {}

@@ -1,6 +1,6 @@
 from src.models.aggregations import TeamOverview, HeatmapData
 
-def get_coach_team_overview(coach_id: str) -> TeamOverview:
+def get_coach_team_overview(coach_id: str, club_id: str, person_id: str) -> TeamOverview:
     # Logic to aggregate team heatmap data and predictions
     
     # T022: Predictive baseline average fallback logic for new athletes
@@ -12,9 +12,10 @@ def get_coach_team_overview(coach_id: str) -> TeamOverview:
         
     return TeamOverview(
         coach_id=coach_id,
+        club_id=club_id,
         team_heatmap=[
             HeatmapData(
-                athlete_id='athlete-1', 
+                person_id=person_id, 
                 figure_weaknesses={'spin': 5.2}, 
                 prediction_score=calculate_prediction([]),
                 figure_score=68.5,

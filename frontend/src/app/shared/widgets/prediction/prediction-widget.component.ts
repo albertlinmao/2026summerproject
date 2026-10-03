@@ -17,7 +17,7 @@ import { ErrorDisplayComponent } from '../../ui/error-display.component';
 import { environment } from '../../../../environments/environment';
 
 export interface PredictionInsight {
-  athlete_id: string;
+  person_id: string;
   next_score_prediction: number;
   plateau_risk: boolean;
   confidence_interval: number;
@@ -34,7 +34,7 @@ export interface PredictionInsight {
   imports: [CardComponent, TypographyComponent, LoadingSpinnerComponent, ErrorDisplayComponent],
   template: `
     <app-card title="Qualification Prediction" [subtitle]="subtitle()">
-      @if (!athleteId) {
+      @if (!personId) {
         <app-typography variant="body-medium" color="on-surface-variant">
           Select an athlete to view their prediction.
         </app-typography>
@@ -140,7 +140,7 @@ export interface PredictionInsight {
   ],
 })
 export class PredictionWidgetComponent implements OnChanges {
-  @Input() athleteId: string | null = null;
+  @Input() personId: string | null = null;
   @Input() athleteName: string | null = null;
 
   insight: PredictionInsight | null = null;
@@ -153,7 +153,7 @@ export class PredictionWidgetComponent implements OnChanges {
   private cdr = inject(ChangeDetectorRef);
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['athleteId'] && this.athleteId) {
+    if (changes['personId'] && this.personId) {
       void this.load();
     }
   }
@@ -175,7 +175,7 @@ export class PredictionWidgetComponent implements OnChanges {
   }
 
   private async load(): Promise<void> {
-    if (!this.athleteId) {
+    if (!this.personId) {
       return;
     }
     this.loading = true;
@@ -183,7 +183,7 @@ export class PredictionWidgetComponent implements OnChanges {
     try {
       const res = await firstValueFrom(
         this.http.get<PredictionInsight>(
-          `${environment.apiUrl}/analytics/athletes/${this.athleteId}/prediction`
+          `${environment.apiUrl}/analytics/athletes/${this.personId}/prediction`
         )
       );
       this.insight = res;

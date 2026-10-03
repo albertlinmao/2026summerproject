@@ -1,4 +1,4 @@
-import { Component, Output, EventEmitter, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, signal, ChangeDetectionStrategy } from '@angular/core';
 
 export interface UploadCompleteEvent {
   id: string;
@@ -272,6 +272,14 @@ const VALID_MIME_PREFIX = 'video/';
   ],
 })
 export class VideoUploadComponent {
+  /**
+   * The person who appears in the video. This is the family-access key, and it is
+   * deliberately not inferred from the caller: a coach uploading footage of a
+   * swimmer is two different people. Defaulting to the caller would mislabel every
+   * coach upload and let a parent upload under their own id.
+   */
+  @Input({ required: true }) personId!: string;
+
   @Output() uploadComplete = new EventEmitter<UploadCompleteEvent>();
 
   selectedFile = signal<File | null>(null);
@@ -347,6 +355,7 @@ export class VideoUploadComponent {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          person_id: this.personId,
           filename: file.name,
           mime_type: file.type,
           size_bytes: file.size,

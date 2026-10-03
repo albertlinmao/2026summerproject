@@ -2,6 +2,10 @@
 
 Research decision: on-demand refresh with caching when first accessed —
 balances freshness against database load (no scheduled/event-driven refresh).
+
+Rows are keyed on ``person_id`` (``specs/001-analytics-dashboard/identity-contract.md``),
+so the cache key is membership-independent: a person keeps one identity across a
+club transfer, and a swimmer with no account still has aggregations.
 """
 
 import logging
@@ -46,36 +50,36 @@ class MaterializedViewService:
             return False
 
     async def get_athlete_aggregations(
-        self, athlete_id: str, force_refresh: bool = False
+        self, person_id: str, force_refresh: bool = False
     ) -> list[dict[str, Any]]:
-        """Read cached aggregations for one athlete; refresh on cache miss."""
-        cache_key = f"as_daily_aggregations:{athlete_id}"
+        """Read cached aggregations for one person; refresh on cache miss."""
+        cache_key = f"as_daily_aggregations:{person_id}"
         if not force_refresh:
             cached = await self.cache.get_json(cache_key)
             if cached is not None:
                 return cached.get("rows", [])
 
-        rows = self._query_athlete(athlete_id)
+        rows = self._query_person(person_id)
         if not rows:
             # On-demand refresh per research decision, then retry once.
             await self.refresh()
-            rows = self._query_athlete(athlete_id)
+            rows = self._query_person(person_id)
 
         await self.cache.set_json(cache_key, {"rows": rows}, ttl=CACHE_TTL_SECONDS)
         return rows
 
-    def _query_athlete(self, athlete_id: str) -> list[dict[str, Any]]:
+    def _query_person(self, person_id: str) -> list[dict[str, Any]]:
         try:
             response = (
                 self.client.table("as_daily_aggregations")
                 .select("*")
-                .eq("athlete_id", athlete_id)
+                .eq("person_id", person_id)
                 .order("date", desc=False)
                 .execute()
             )
             return response.data or []
         except Exception as exc:
-            logger.warning("as_daily_aggregations query failed for %s: %s", athlete_id, exc)
+            logger.warning("as_daily_aggregations query failed for %s: %s", person_id, exc)
             return []
 
 

@@ -5,7 +5,7 @@ import { TypographyComponent } from '../../ui/typography.component';
 import { LoadingSpinnerComponent } from '../../ui/loading-spinner.component';
 
 export interface TeamAthleteStat {
-  athlete_id: string;
+  person_id: string;
   name: string;
   avg_figure_score: number | null;
   avg_routine_score: number | null;
@@ -41,12 +41,12 @@ export interface TeamOverviewData {
       } @else {
         <span>{{ overview.athletes.length }} athletes</span>
         <ul class="athlete-list" aria-label="Team athletes">
-          @for (athlete of overview.athletes; track athlete.athlete_id) {
+          @for (athlete of overview.athletes; track athlete.person_id) {
             <li>
               <button
                 type="button"
                 class="athlete-row"
-                [class.selected]="athlete.athlete_id === selectedAthleteId"
+                [class.selected]="athlete.person_id === selectedPersonId"
                 (click)="selectAthlete(athlete)"
               >
                 <span class="athlete-name">{{ athlete.name }}</span>
@@ -81,7 +81,7 @@ export interface TeamOverviewData {
                 @if (athlete.at_risk) {
                   <span class="badge badge-risk">At risk</span>
                 }
-                @if (overview.most_improved?.athlete_id === athlete.athlete_id) {
+                @if (overview.most_improved?.person_id === athlete.person_id) {
                   <span class="badge badge-improved">Most improved</span>
                 }
               </button>
@@ -182,7 +182,7 @@ export interface TeamOverviewData {
 export class TeamOverviewWidgetComponent {
   @Input() overview: TeamOverviewData | null = null;
   @Input() loading = false;
-  @Input() selectedAthleteId: string | null = null;
+  @Input() selectedPersonId: string | null = null;
   @Output() athleteSelected = new EventEmitter<TeamAthleteStat>();
 
   selectAthlete(athlete: TeamAthleteStat): void {

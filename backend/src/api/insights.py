@@ -1,6 +1,15 @@
+"""GET /athletes/{person_id}/insights — forecast plus AI coaching recommendation.
+
+Identity follows ``specs/001-analytics-dashboard/identity-contract.md``: the path
+carries a **person id** rather than an athlete-row id, because a swimmer with no
+account still has results. ``require_person_access`` applies the same visibility
+rule as the RLS policies (coach-of, self, guardian-of) at the API layer, which
+matters because the backend connects with a key that bypasses RLS.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.api.auth import verify_jwt
+from src.core.auth import require_person_access
 from src.core.database import supabase
 from src.services.predictions.ml_service import predict_next_score
 from src.services.ai.openai_service import (
@@ -11,15 +20,14 @@ from src.services.ai.openai_service import (
 router = APIRouter()
 
 
-@router.get("/athletes/{athlete_id}/insights")
+@router.get("/athletes/{person_id}/insights")
 def get_athlete_insights(
-    athlete_id: str,
-    user_payload: dict = Depends(verify_jwt),
+    person_id: str = Depends(require_person_access),
 ):
     response = (
         supabase.table("as_competition_results")
         .select("*")
-        .eq("athlete_id", athlete_id)
+        .eq("person_id", person_id)
         .order("competition_date", desc=True)
         .execute()
     )
@@ -28,13 +36,13 @@ def get_athlete_insights(
     if not results:
         raise HTTPException(status_code=404, detail="No competition results found for this athlete")
 
-    insight = predict_next_score(athlete_id, results)
+    insight = predict_next_score(person_id, results)
 
     try:
-        recommendation = generate_coaching_recommendation(athlete_id, results)
+        recommendation = generate_coaching_recommendation(person_id, results)
     except AIServiceUnavailableError:
         recommendation = {
-            "athlete_id": athlete_id,
+            "person_id": person_id,
             "recommendation_text": "AI temporarily unavailable",
             "generated_at": None,
             "weakest_figure": "",

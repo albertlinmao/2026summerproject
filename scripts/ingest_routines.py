@@ -3,6 +3,21 @@
 
 Usage:
   python scripts/ingest_routines.py /path/to/Routine_Results.pdf [--dry-run]
+
+Writes as_event -> as_meet -> as_meet_judge_panel -> as_meet_routine_result,
+then calls synchronized_meet() to reconcile people, clubs and memberships.
+
+Re-importing a PDF that is already loaded is refused rather than duplicated. See
+scripts/ingest_common.py for the write path and why it is shared with ingest_figures.py.
+
+KNOWN GAP - the score arithmetic is not trustworthy yet. as_meet_routine_result is
+still empty on the live database, so this path has never completed an import. The
+STC lines carry a deduction that the parser used to write into `synchronization_total`
+(a column that means a total, and which received -15.9667), and the ACRO / Artistic
+Impression regexes only match when a line has either zero or two trailing numbers,
+so most element lines are dropped and element_total / routine_score stay 0.0. Those
+values are left NULL rather than filled with a guess - see the warnings the run
+prints. Fixing them needs the intended column semantics confirmed, not a regex tweak.
 """
 import os
 import re
@@ -28,28 +43,29 @@ from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
-def get_supabase_config() -> Dict[str, str]:
-    load_dotenv(ROOT_DIR / ".env")
-    load_dotenv(ROOT_DIR / "supabase" / ".env", override=False)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    raw_url = (os.getenv("SUPABASE_URL") or os.getenv("SUPABASE_PUBLIC_URL") or "").strip()
-    if raw_url.startswith("postgres://") or raw_url.startswith("postgresql://"):
-        raw_url = "http://localhost:8000"
-    if raw_url.startswith("http://host.docker.internal"):
-        raw_url = raw_url.replace("http://host.docker.internal", "http://localhost")
-    if not raw_url:
-        raw_url = "http://localhost:8000"
+from ingest_common import (  # noqa: E402
+    AlreadyIngested,
+    IngestError,
+    RunReport,
+    SupabaseRest,
+    add_script_dir_to_path,
+    check_results_present,
+    describe,
+    get_supabase_config,
+    prepare_meet_for_write,
+    resolve_event,
+    resolve_meet,
+)
 
-    key = (
-        os.getenv("SUPABASE_KEY")
-        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        or os.getenv("SUPABASE_SERVICE_KEY")
-        or os.getenv("SERVICE_ROLE_KEY")
-        or os.getenv("ANON_KEY")
-        or ""
-    )
+add_script_dir_to_path()
 
-    return {"url": raw_url, "key": key}
+try:
+    from user_mgmt_sync import synchronized_meet
+except Exception:
+    print("Missing dependency user_mgmt_sync (psycopg2?). Install via: pip install -r requirements.txt")
+    raise
 
 
 def extract_text_from_pdf(path: str) -> str:
@@ -63,6 +79,8 @@ def extract_text_from_pdf(path: str) -> str:
 
 def parse_routine_pdf_text(text: str) -> Dict[str, Any]:
     lines = [ln.rstrip() for ln in text.splitlines()]
+    warnings: List[str] = []
+    dropped_scoring_lines: List[str] = []
 
     # Extract Header (Event, Meet, City, Date)
     header_lines = []
@@ -170,7 +188,12 @@ def parse_routine_pdf_text(text: str) -> Dict[str, Any]:
                 },
                 "element_total": 0.0,
                 "artisticimpression_total": 0.0,
-                "synchronization_total": 0.0,
+                # Left NULL rather than 0.0. The old code assigned the STC deduction
+                # here, so this column received -15.9667 on a real PDF: a penalty is
+                # not a total, and three STC lines raced for the same field with the
+                # last one winning. A deduction is still recorded, in the score dict
+                # below, where it belongs.
+                "synchronization_total": None,
                 "routine_score": 0.0
             }
 
@@ -267,13 +290,25 @@ def parse_routine_pdf_text(text: str) -> Dict[str, Any]:
                         "J3": int(sy_match.group("j3")),
                         "total": float(sy_match.group("tot"))
                     }
-                    if sy_match.group("pen"): 
+                    if sy_match.group("pen"):
+                        # Recorded, not promoted to synchronization_total. What this
+                        # trailing column means is not established, so it is kept with
+                        # the STC row instead of being reported as a score total.
                         score["penalty"] = float(sy_match.group("pen"))
-                        athlete["synchronization_total"] = score["penalty"]
                     athlete["routine_scores"]["synchronization_scores"].append(score)
                     i += 1
                     continue
-                
+
+                # A line that starts like a scoring row but matched none of the
+                # patterns above is a dropped score, not a stray line. The ACRO and
+                # Artistic Impression regexes only match when the line carries either
+                # zero or two trailing numbers, and the real sheets carry one, so this
+                # is where the totals quietly go to zero. Count them and say so.
+                if re.match(r"^\s*(ACRO|HYBRID|Choreo and Music|Performance|Transitions|STC)", current):
+                    dropped_scoring_lines.append(current.strip()[:80])
+                    i += 1
+                    continue
+
                 i += 1
 
             # Store athletes json string
@@ -281,6 +316,18 @@ def parse_routine_pdf_text(text: str) -> Dict[str, Any]:
             athletes.append(athlete)
             continue
         i += 1
+
+    if dropped_scoring_lines:
+        warnings.append(
+            f"{len(dropped_scoring_lines)} scoring line(s) did not match any pattern and were "
+            "dropped, so element_total / artisticimpression_total / routine_score are "
+            f"understated. First: {dropped_scoring_lines[0]!r}"
+        )
+    warnings.append(
+        "synchronization_total is NULL on every row: the STC trailing column is recorded in "
+        "routine_scores but is not promoted to a total, because what it represents is not "
+        "established."
+    )
 
     return {
         "event": {
@@ -294,91 +341,38 @@ def parse_routine_pdf_text(text: str) -> Dict[str, Any]:
         },
         "judges": judges,
         "athletes": athletes,
+        "warnings": warnings,
     }
 
 
-def insert_rows_to_supabase(payload: Dict[str, Any], source_file: str, dry_run: bool = False) -> None:
+
+def insert_rows_to_supabase(payload: Dict[str, Any], source_file: str, dry_run: bool = False,
+                            replace_source: bool = False, allow_empty: bool = False) -> str:
+    """Write one parsed PDF. Returns a human-readable summary of what happened."""
+    check_results_present(payload, allow_empty)
+
+    config = get_supabase_config()
+    client = SupabaseRest(config["url"], config["key"])
+
     if dry_run:
-        print(f"Dry run for {source_file}: would insert events/meets/judges/athletes.")
-        return
+        return "dry run, nothing written"
 
-    supabase_config = get_supabase_config()
-    supabase_url = supabase_config["url"]
-    supabase_key = supabase_config["key"]
+    event_id, event_created = resolve_event(client, payload["event"])
+    meet_id, meet_created = resolve_meet(client, payload["meet"], event_id)
 
-    if not supabase_url or not supabase_key:
-        raise RuntimeError("Supabase credentials not provided in environment")
-
-    def insert_rows(table: str, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        endpoint = f"{supabase_url.rstrip('/')}/rest/v1/{table}"
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation",
-        }
-        response = requests.post(endpoint, headers=headers, json=rows, timeout=20)
-        if response.status_code not in (200, 201):
-            raise RuntimeError(f"Supabase insert failed for {table}: {response.status_code} {response.text}")
-        if not response.text:
-            return []
-        try:
-            return response.json()
-        except ValueError as exc:
-            raise RuntimeError(f"Supabase returned invalid JSON for {table}: {response.text}") from exc
-
-    # Event
-    event_name = payload["event"]["event_name"]
-    query_endpoint = f"{supabase_url.rstrip('/')}/rest/v1/as_event"
-    query_headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Accept": "application/json",
-    }
-    
-    res = requests.get(
-        query_endpoint, 
-        headers=query_headers, 
-        params={"event_name": f"eq.{event_name}", "select": "id"},
-        timeout=20
+    # Refuses a re-ingest before anything is written.
+    replaced = prepare_meet_for_write(
+        client, "as_meet_routine_result", meet_id, source_file, replace_source
     )
-    
-    if res.status_code == 200 and res.json():
-        event_id = res.json()[0]["id"]
-    else:
-        event_rows = insert_rows("as_event", [payload["event"]])
-        if not event_rows:
-            raise RuntimeError("No event row returned")
-        event_id = event_rows[0]["id"]
-    
-    # Meet
-    meet_name = payload["meet"]["name"]
-    meet_query_endpoint = f"{supabase_url.rstrip('/')}/rest/v1/as_meet"
-    res_meet = requests.get(
-        meet_query_endpoint, 
-        headers=query_headers, 
-        params={"name": f"eq.{meet_name}", "event_id": f"eq.{event_id}", "select": "id"},
-        timeout=20
-    )
-    
-    if res_meet.status_code == 200 and res_meet.json():
-        meet_id = res_meet.json()[0]["id"]
-    else:
-        meet = payload["meet"]
-        meet["event_id"] = event_id
-        meet_rows = insert_rows("as_meet", [meet])
-        meet_id = meet_rows[0]["id"]
 
-    # Judges Panel
     if payload["judges"]:
         judge_rows = []
         for j in payload["judges"]:
-            j["meet_id"] = meet_id
-            judge_rows.append(j)
-        # Using as_meet_judge_panel per user prompt
-        insert_rows("as_meet_judge_panel", judge_rows)
+            row = dict(j)
+            row["meet_id"] = meet_id
+            judge_rows.append(row)
+        client.insert("as_meet_judge_panel", judge_rows)
 
-    # Athlete Results
     if payload["athletes"]:
         athlete_rows = []
         for athlete in payload["athletes"]:
@@ -397,32 +391,77 @@ def insert_rows_to_supabase(payload: Dict[str, Any], source_file: str, dry_run: 
                 "routine_score": athlete.get("routine_score"),
                 "source_file": source_file
             })
-            
-        insert_rows("as_meet_routine_result", athlete_rows)
+        client.insert("as_meet_routine_result", athlete_rows)
 
-    print(f"Inserted event, meet, judges, and athlete results for {source_file}")
+    parts = []
+    parts.append("created event" if event_created else "reused event")
+    parts.append("created meet" if meet_created else "reused meet")
+    if replaced:
+        parts.append(replaced)
+    return ", ".join(parts)
 
 
 def main(argv: List[str]) -> int:
-    if len(argv) < 2:
-        print("Usage: python scripts/ingest_routines.py <pdf1> [pdf2 ...] [--dry-run]")
+    args = [a for a in argv[1:] if not a.startswith("--")]
+    flags = {a for a in argv[1:] if a.startswith("--")}
+    known = {"--dry-run", "--replace-source", "--allow-empty", "--no-provision"}
+    unknown = flags - known
+    if unknown:
+        print("Unknown option(s):", ", ".join(sorted(unknown)))
+        print("Usage: python scripts/ingest_routines.py <pdf1> [pdf2 ...] "
+              "[--dry-run] [--replace-source] [--allow-empty] [--no-provision]")
+        return 2
+    if not args:
+        print("Usage: python scripts/ingest_routines.py <pdf1> [pdf2 ...] "
+              "[--dry-run] [--replace-source] [--allow-empty] [--no-provision]")
         return 1
 
-    dry_run = "--dry-run" in argv
-    paths = [arg for arg in argv[1:] if arg != "--dry-run"]
+    dry_run = "--dry-run" in flags
+    replace_source = "--replace-source" in flags
+    allow_empty = "--allow-empty" in flags
+    # Account provisioning is on by default because the import and the roster are
+    # two views of the same PDF: an athlete with a result but no account cannot
+    # be rostered. --no-provision imports results only, for an import whose
+    # swimmers are not members of this system (a reference meet, an archive).
+    provision = "--no-provision" not in flags
+    report = RunReport()
 
-    for path in paths:
+    for path in args:
         if not os.path.exists(path):
-            print("File not found:", path)
+            report.add(path, "SKIPPED", "file not found")
             continue
         print("Processing:", path)
-        text = extract_text_from_pdf(path)
-        parsed = parse_routine_pdf_text(text)
         try:
-            insert_rows_to_supabase(parsed, path, dry_run=dry_run)
+            parsed = parse_routine_pdf_text(extract_text_from_pdf(path))
+            summary = insert_rows_to_supabase(
+                parsed, path, dry_run=dry_run,
+                replace_source=replace_source, allow_empty=allow_empty,
+            )
+            print(describe(parsed))
+            if not dry_run:
+                print(f"  {summary}")
+                if provision:
+                    try:
+                        synchronized_meet(parsed, dry_run=False, routine=True)
+                    except Exception as exc:
+                        report.add(path, "FAILED", f"results written, but person sync failed: {exc}")
+                        print("  person sync FAILED after results were written:", exc)
+                        continue
+                else:
+                    print("  account provisioning skipped (--no-provision)")
+            report.add(path, "OK")
+        except AlreadyIngested as exc:
+            report.add(path, "REFUSED", str(exc))
+            print("  REFUSED -", exc)
+        except IngestError as exc:
+            report.add(path, "FAILED", str(exc))
+            print("  FAILED -", exc)
         except Exception as exc:
-            print("Failed to insert to Supabase:", exc)
-    return 0
+            report.add(path, "FAILED", f"{type(exc).__name__}: {exc}")
+            print("  FAILED -", f"{type(exc).__name__}: {exc}")
+
+    print(report.render())
+    return 1 if report.failures else 0
 
 
 if __name__ == "__main__":

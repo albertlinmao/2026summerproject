@@ -1,11 +1,30 @@
+# ============================================================================
+# CANONICAL API contract for the Artistic Swimming Analytics Dashboard.
+# `contracts/api.yaml` and `contracts/api.yml` are subsets of this file; if they
+# disagree with it, this file wins.
+#
+# Identity vocabulary follows specs/001-analytics-dashboard/identity-contract.md:
+#   - the path identifier is `person_id`; the domain word "athlete" stays in the
+#     path because a swimmer is an athlete
+#   - `athlete_name`, `athlete_birth_year`, and `team_athletes` are verbatim
+#     fields transcribed from official result PDFs. They are lineage, not identity
+#     references, and are deliberately NOT renamed.
+#   - only the `sub` claim is authoritative; `athlete_ids` and a scalar `club_id`
+#     claim are forbidden. Roles come from `as_club_membership` per club.
+# ============================================================================
 openapi: 3.0.3
 info:
   title: Artistic Swimming Analytics API
   version: 1.0.0
+servers:
+  - url: /api/v1
 paths:
   /analytics/dashboard:
     get:
       summary: Get role-based dashboard widgets and aggregations
+      description: >-
+        Returns unified dashboard widgets based on the caller's `as_club_membership`
+        rows, one per club. Permissions for multiple roles are merged.
       security:
         - BearerAuth: []
       responses:
@@ -14,14 +33,16 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-  /athletes/{athlete_id}/insights:
+                $ref: '#/components/schemas/DashboardOverview'
+        '401':
+          description: Unauthorized (identity service unreachable or invalid token)
+  /athletes/{person_id}/insights:
     get:
-      summary: Get personalized ML predictions and AI Coach recommendations for an athlete
+      summary: Get personalized ML predictions and AI Coach recommendations for a person
       security:
         - BearerAuth: []
       parameters:
-        - name: athlete_id
+        - name: person_id
           in: path
           required: true
           schema:
@@ -29,11 +50,51 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Athlete insights retrieved
+          description: Person insights retrieved
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/PersonInsights'
+  /analytics/athletes/{person_id}/prediction:
+    get:
+      summary: Get predictive insights for a person (next score, plateau risk)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: person_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Predictive insights and qualification probability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictiveInsight'
+  /analytics/athletes/{person_id}/recommendation:
+    get:
+      summary: Get AI coaching recommendation for a person
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: person_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Natural language recommendation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachingRecommendation'
+        '503':
+          description: AI temporarily unavailable
   /uploads/sign:
     post:
       summary: Request a presigned upload URL for a routine video (FR-007)
@@ -45,7 +106,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [filename, mime_type, size_bytes, athlete_id]
+              required: [filename, mime_type, size_bytes, person_id]
               properties:
                 filename:
                   type: string
@@ -53,10 +114,10 @@ paths:
                   type: string
                 size_bytes:
                   type: integer
-                athlete_id:
+                person_id:
                   type: string
                   format: uuid
-                  description: Athlete appearing in the video (family-access scope)
+                  description: Person appearing in the video (family-access scope)
       responses:
         '200':
           description: Presigned upload URL and storage object key
@@ -74,7 +135,7 @@ paths:
         '413':
           description: File exceeds size limit
         '403':
-          description: User not authorized to upload for this athlete/club
+          description: User not authorized to upload for this person/club
   /uploads/finalize:
     post:
       summary: Finalize a completed video upload after client-side PUT (FR-007)
@@ -327,7 +388,142 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: >-
+        JWT from the `001-multi-tenant-user-api`. The `sub` claim is required and must
+        equal an `as_person_identity.subject_id`; it is the only claim RLS trusts.
+        `person_id`, `club_ids`, `roles_by_club`, and `permissions` are an optional,
+        non-authoritative cache. `athlete_ids` and a scalar `club_id` are forbidden.
   schemas:
+    Role:
+      type: string
+      description: >-
+        Coarse role carried on an `as_club_membership` row. Authorization is always
+        evaluated as (person, club, role), never as a flat role list. Display-only
+        distinctions such as `Lead Coach` or `Team Captain` live in `MembershipTitle`.
+      enum: [admin, coach, swimmer, parent, official]
+    MembershipStatus:
+      type: string
+      description: >-
+        Membership lifecycle. `invited` and `active` grant access; `dormant` and
+        `left` do not.
+      enum: [invited, active, dormant, left]
+    MembershipTitle:
+      type: string
+      description: >-
+        Display-only title on the membership (e.g. `Lead Coach`, `Team Captain`,
+        `Club Owner`). Never used for authorization.
+    Person:
+      type: object
+      description: >-
+        A human being. Holds no credentials and no `club_id`, so one person may
+        belong to several clubs and a login is optional. A person becomes an
+        athlete or a coach by holding an active membership, not by being one.
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        given_name:
+          type: string
+        family_name:
+          type: string
+        middle_name:
+          type: string
+        birth_date:
+          type: string
+          format: date
+    ClubMembership:
+      type: object
+      description: >-
+        The tenant-scoped edge between a Person and a Club, and the authorization
+        source of truth. JWT claims are only a cache of these rows.
+      properties:
+        id:
+          type: string
+          format: uuid
+        person_id:
+          type: string
+          format: uuid
+        club_id:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/Role'
+        title:
+          $ref: '#/components/schemas/MembershipTitle'
+        status:
+          $ref: '#/components/schemas/MembershipStatus'
+        joined_at:
+          type: string
+          format: date
+        left_at:
+          type: string
+          format: date
+    DashboardOverview:
+      type: object
+      description: >-
+        Unified dashboard. One call serves every club in the caller's
+        `as_club_membership` set; permissions for multiple roles are merged.
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        role_views:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        club_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        team_heatmap:
+          type: array
+          items:
+            $ref: '#/components/schemas/HeatmapData'
+    HeatmapData:
+      type: object
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        figure_weaknesses:
+          type: object
+        prediction_score:
+          type: number
+        figure_score:
+          type: number
+        routine_score:
+          type: number
+    PersonInsights:
+      type: object
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        projected_score:
+          type: number
+        recommendation_text:
+          type: string
+    PredictiveInsight:
+      type: object
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        next_score_prediction:
+          type: number
+        plateau_risk:
+          type: boolean
+    CoachingRecommendation:
+      type: object
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        recommendation_text:
+          type: string
+        weakest_figure:
+          type: string
     VideoMarker:
       type: object
       properties:
@@ -403,10 +599,19 @@ components:
                 type: string
     FigureResult:
       type: object
+      description: >-
+        Verbatim fields from the imported official result PDF. `athlete_name` and
+        `athlete_birth_year` are lineage, not identity references. `person_id` is
+        the resolved canonical person from `as_result_person_link` and is null
+        while the row is unresolved.
       properties:
         id:
           type: string
           format: uuid
+        person_id:
+          type: string
+          format: uuid
+          nullable: true
         rank:
           type: string
         draw:
@@ -434,10 +639,19 @@ components:
           format: date-time
     RoutineResult:
       type: object
+      description: >-
+        Verbatim fields from the imported official routine result PDF. `team_athletes`
+        is the JSON array of printed names and is lineage, not an identity reference.
+        `person_id` is the resolved canonical person from `as_result_person_link` and
+        is null while the row is unresolved.
       properties:
         id:
           type: string
           format: uuid
+        person_id:
+          type: string
+          format: uuid
+          nullable: true
         rank:
           type: string
         draw:

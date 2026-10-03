@@ -72,6 +72,18 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
             </a>
           }
 
+          @if (canAccessParent()) {
+            <a
+              mat-list-item
+              routerLink="/dashboard/parent"
+              routerLinkActive="active"
+              class="nav-item"
+            >
+              <app-icon matListItemIcon name="group" size="medium"></app-icon>
+              <span matListItemTitle>My Swimmers</span>
+            </a>
+          }
+
           @if (canAccessClubAdmin()) {
             <a
               mat-list-item
@@ -195,7 +207,7 @@ import { TypographyComponent } from '../../shared/ui/typography.component';
                 authService.user()?.name || 'User'
               }}</app-typography>
               <app-typography variant="body-small" color="on-surface-variant">{{
-                authService.getClubId()
+                clubList()
               }}</app-typography>
             </div>
             <mat-divider></mat-divider>
@@ -445,15 +457,23 @@ export class ShellComponent {
   authService = inject(AuthService);
 
   canAccessCoach(): boolean {
-    return this.authService.hasAnyRole(['Coach', 'Lead Coach', 'Club Admin', 'Club Owner']);
+    return this.authService.hasAnyRole(['coach', 'admin']);
   }
 
   canAccessSwimmer(): boolean {
-    return this.authService.hasAnyRole(['Athlete', 'Team Captain']);
+    return this.authService.hasAnyRole(['swimmer']);
+  }
+
+  canAccessParent(): boolean {
+    return this.authService.hasAnyRole(['parent']);
   }
 
   canAccessClubAdmin(): boolean {
-    return this.authService.hasAnyRole(['Club Admin', 'Club Owner']);
+    return this.authService.hasAnyRole(['admin']);
+  }
+
+  clubList(): string {
+    return this.authService.getClubIds().join(', ');
   }
 
   logout(): void {

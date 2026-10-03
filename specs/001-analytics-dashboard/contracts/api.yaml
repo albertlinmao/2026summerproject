@@ -1,4 +1,14 @@
-openapi: 3.1.0
+# ============================================================================
+# SUBSET contract for the Artistic Swimming Analytics Dashboard.
+# `contracts/openapi.yaml` is canonical; if this file disagrees with it, the
+# canonical file wins. This file only summarises the dashboard-facing paths.
+#
+# Identity vocabulary follows specs/001-analytics-dashboard/identity-contract.md:
+#   - the path identifier is `person_id`; the domain word "athlete" stays in the path
+#   - only the `sub` claim is authoritative; `athlete_ids` and a scalar `club_id`
+#     claim are forbidden. Roles come from `as_club_membership` per club.
+# ============================================================================
+openapi: 3.0.3
 info:
   title: Artistic Swimming Analytics API
   version: 1.0.0
@@ -8,53 +18,166 @@ paths:
   /analytics/dashboard:
     get:
       summary: Get user-specific dashboard aggregates
+      description: >-
+        Returns unified dashboard widgets based on the caller's `as_club_membership`
+        rows, one per club. Permissions for multiple roles are merged.
       security:
-        - bearerAuth: []
+        - BearerAuth: []
       responses:
         '200':
           description: Dashboard metrics and charting data
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  role:
-                    type: string
-                  widgets:
-                    type: array
-                    items:
-                      type: object
+                $ref: '#/components/schemas/DashboardOverview'
+        '401':
+          description: Unauthorized (identity service unreachable or invalid token)
 
-  /athletes/{athlete_id}/insights:
+  /athletes/{person_id}/insights:
     get:
-      summary: Retrieve AI predictions and recommendations for an athlete
+      summary: Retrieve AI predictions and recommendations for a person
       parameters:
         - in: path
-          name: athlete_id
+          name: person_id
           required: true
           schema:
             type: string
             format: uuid
       security:
-        - bearerAuth: []
+        - BearerAuth: []
       responses:
         '200':
           description: Predictive insights and coaching recommendations
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  projected_score:
-                    type: number
-                  recommendation_text:
-                    type: string
+                $ref: '#/components/schemas/PersonInsights'
+
+  /analytics/athletes/{person_id}/prediction:
+    get:
+      summary: Get predictive insights for a person
+      parameters:
+        - in: path
+          name: person_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Predictive score and plateau risk
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictiveInsight'
+
+  /analytics/athletes/{person_id}/recommendation:
+    get:
+      summary: Get AI coaching recommendation for a person
+      parameters:
+        - in: path
+          name: person_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Natural language recommendation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachingRecommendation'
         '503':
           description: AI Service temporarily unavailable
 
 components:
   securitySchemes:
-    bearerAuth:
+    BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: >-
+        JWT from the `001-multi-tenant-user-api`. The `sub` claim is required and must
+        equal an `as_person_identity.subject_id`; it is the only claim RLS trusts.
+        `person_id`, `club_ids`, `roles_by_club`, and `permissions` are an optional,
+        non-authoritative cache. `athlete_ids` and a scalar `club_id` are forbidden.
+  schemas:
+    Role:
+      type: string
+      description: >-
+        Coarse role carried on an `as_club_membership` row. Authorization is always
+        evaluated as (person, club, role), never as a flat role list. Display-only
+        distinctions such as `Lead Coach` or `Team Captain` live in `MembershipTitle`.
+      enum: [admin, coach, swimmer, parent, official]
+    Person:
+      type: object
+      description: >-
+        A human being. Holds no credentials and no `club_id`, so one person may
+        belong to several clubs and a login is optional. A person becomes an
+        athlete or a coach by holding an active membership, not by being one.
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        given_name:
+          type: string
+        family_name:
+          type: string
+        middle_name:
+          type: string
+        birth_date:
+          type: string
+          format: date
+    DashboardOverview:
+      type: object
+      description: >-
+        Unified dashboard. One call serves every club in the caller's
+        `as_club_membership` set; permissions for multiple roles are merged.
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        role_views:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        club_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+    PersonInsights:
+      type: object
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        projected_score:
+          type: number
+        recommendation_text:
+          type: string
+    PredictiveInsight:
+      type: object
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        next_score_prediction:
+          type: number
+        plateau_risk:
+          type: boolean
+    CoachingRecommendation:
+      type: object
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        recommendation_text:
+          type: string
+        weakest_figure:
+          type: string

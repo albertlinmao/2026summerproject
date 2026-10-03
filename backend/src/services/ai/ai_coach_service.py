@@ -43,20 +43,22 @@ class AICoachService:
 
     def generate_recommendation(
         self,
-        athlete_id: str,
+        person_id: str,
         athlete_name: str,
         scores: list[float],
         figure_averages: Optional[dict[str, float]] = None,
     ) -> CoachingRecommendation:
         """Generate a natural language practice focus for an athlete.
 
-        Raises AIServiceUnavailableError when the AI provider fails; callers
-        must fall back to AI_UNAVAILABLE_TEXT messaging.
+        ``person_id`` identifies the swimmer; ``athlete_name`` is the printed
+        display name, which is what a prompt wants to read. Raises
+        AIServiceUnavailableError when the AI provider fails; callers must fall
+        back to AI_UNAVAILABLE_TEXT messaging.
         """
         if len(scores) < 2:
             # Baseline average fallback for new swimmers (no history to analyze).
             return CoachingRecommendation(
-                athlete_id=athlete_id,
+                person_id=person_id,
                 recommendation_text=(
                     f"{athlete_name or 'This athlete'} is new to competition tracking. "
                     "Focus on fundamentals across all figures and establish baseline scores."
@@ -97,11 +99,11 @@ class AICoachService:
             )
             content = (response.choices[0].message.content or "").strip()
         except (OpenAIError, APITimeoutError, TimeoutError, ConnectionError) as exc:
-            logger.warning("AI coach unavailable for athlete %s: %s", athlete_id, exc)
+            logger.warning("AI coach unavailable for person %s: %s", person_id, exc)
             raise AIServiceUnavailableError(str(exc)) from exc
 
         return CoachingRecommendation(
-            athlete_id=athlete_id,
+            person_id=person_id,
             recommendation_text=content,
             generated_at=datetime.now(timezone.utc),
             weakest_figure=self._extract_weakest(content) or weakest,

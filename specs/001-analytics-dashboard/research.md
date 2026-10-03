@@ -50,9 +50,9 @@
 
 ## Decision: Video Access Control — Family Access (FR-007)
 - **Context**: Routine videos depict athletes; access scope was unspecified beyond club isolation.
-- **Decision**: Per-video access restricted to the filmed athlete, their coaches, and their parents. Requires each `video_uploads` row to carry an `athlete_id` link; access checks resolve the requesting user's relationship (self, coach-of, parent-of) to that athlete via the Multi-Tenant User Service API claims.
-- **Rationale**: Protects footage of minors (privacy-sensitive), keeps the coach analysis workflow intact (coaches of the athlete retain access), and is enforceable with a small RLS predicate given the athlete link.
-- **Alternatives considered**: Club-wide access (over-exposes footage), uploader-only + admins (breaks athlete/parent access to their own routines).
+- **Decision**: Per-video access restricted to the person filmed, their coaches, and their guardians. Each `video_uploads` row carries a `person_id` link, and the caller's relationship to that person is resolved in the database, never from token claims: **self** (the row's `person_id` equals the caller's `person_id` *and* the caller holds an active `swimmer` membership in the row's club), **coach-of** (active `coach`/`admin` membership in that club), or **guardian-of** (an `as_person_link` row of kind `parent`/`guardian` joining the caller to that person in the same club).
+- **Rationale**: Protects footage of minors (privacy-sensitive) and keeps the coach analysis workflow intact, while remaining expressible without an account for every minor: the child needs only an `as_person` row plus a guardian `as_person_link`, and only the parent authenticates. An earlier design resolved guardianship from an `athlete_ids` JWT claim, which baked the edge into the token — it went stale on transfer or offboarding, could not express coach-of or self, and forced account creation for children. `as_person_link` also carries its own `club_id`, so a guardian relationship in one club never leaks into another. The identical predicate is applied to Supabase Storage objects.
+- **Alternatives considered**: Club-wide access (over-exposes footage), uploader-only + admins (breaks athlete/parent access to their own routines), `athlete_ids` claim (rejected: stale, unable to express coach-of or self), login per minor (rejected: privacy and onboarding cost).
 
 ## Decision: Marker & Timer Audio Behavior (FR-007, FR-008)
 - **Context**: Markers have types `audio_cue`/`figure`/`timing_mark`; timer end alert unspecified. Pool deck is noisy.

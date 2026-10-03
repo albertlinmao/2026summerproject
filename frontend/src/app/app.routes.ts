@@ -25,7 +25,7 @@ export const routes: Routes = [
       {
         path: 'results',
         canActivate: [roleGuard],
-        data: { roles: ['Coach', 'Lead Coach', 'Club Admin', 'Club Owner'] },
+        data: { roles: ['coach', 'admin'] },
         loadComponent: () =>
           import('./dashboards/results/results-browser.component').then(
             (m) => m.ResultsBrowserComponent
@@ -34,7 +34,7 @@ export const routes: Routes = [
       {
         path: 'coach',
         canActivate: [roleGuard],
-        data: { roles: ['Coach', 'Lead Coach', 'Club Admin', 'Club Owner'] },
+        data: { roles: ['coach', 'admin'] },
         loadComponent: () =>
           import('./dashboards/coach-dashboard.component').then(
             (m) => m.CoachDashboardComponent
@@ -43,16 +43,25 @@ export const routes: Routes = [
       {
         path: 'swimmer',
         canActivate: [roleGuard],
-        data: { roles: ['Athlete', 'Team Captain'] },
+        data: { roles: ['swimmer'] },
         loadComponent: () =>
           import('./dashboards/swimmer/swimmer-dashboard.component').then(
             (m) => m.SwimmerDashboardComponent
           ),
       },
       {
+        path: 'parent',
+        canActivate: [roleGuard],
+        data: { roles: ['parent'] },
+        loadComponent: () =>
+          import('./dashboards/parent/parent-dashboard.component').then(
+            (m) => m.ParentDashboardComponent
+          ),
+      },
+      {
         path: 'athlete-figure',
         canActivate: [roleGuard],
-        data: { roles: ['Coach', 'Lead Coach', 'Club Admin', 'Club Owner'] },
+        data: { roles: ['coach', 'admin'] },
         loadComponent: () =>
           import('./dashboards/athlete-figure-dashboard/athlete-figure-dashboard.component').then(
             (m) => m.AthleteFigureDashboardComponent

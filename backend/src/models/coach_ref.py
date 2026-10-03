@@ -1,9 +1,10 @@
-from pydantic import BaseModel, Field
+"""Deprecated shim.
 
+The identity model has no separate Coach record: a coach is a person holding an
+active ``coach`` or ``admin`` membership, projected through the ``as_coach`` view.
 
-class CoachReference(BaseModel):
-    """Reference to a Coach managed by the Multi-Tenant User Service (Principle 16)."""
+Import from :mod:`src.models.athlete_ref` instead — ``CoachRef`` and ``PersonRef``
+live there alongside the rest of the person/membership models.
+"""
 
-    id: str = Field(..., description="External coach UUID")
-    club_id: str = Field(..., description="Owning club UUID (tenant scope)")
-    name: str = Field(..., description="Coach display name")
+from src.models.athlete_ref import CoachRef, PersonLinkRef, PersonRef  # noqa: F401

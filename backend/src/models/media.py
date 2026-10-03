@@ -5,8 +5,16 @@ from typing import Optional
 
 
 class VideoUpload(BaseModel):
+    """An uploaded routine video.
+
+    ``person_id`` is the athlete who appears in the video and is the family-access
+    key. ``uploaded_by`` is a person, not a login: a coach who never signs in is
+    still the uploader of record.
+    """
+
     id: UUID
     club_id: UUID
+    person_id: UUID
     uploaded_by: UUID
     storage_path: str
     mime_type: str

@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
-from src.api.auth import verify_jwt
+from src.core.auth import get_current_person_id, require_club_membership
 from src.core.database import supabase
 from src.models.media import RoutineTimerInput
 
@@ -8,20 +8,10 @@ router = APIRouter()
 
 
 @router.get("/routines/timers")
-def get_timers(user_payload: dict = Depends(verify_jwt)):
-    user_id = user_payload.get("uid")
-
-    athlete_resp = supabase.table("as_athlete") \
-        .select("club_id") \
-        .eq("id", user_id) \
-        .single() \
-        .execute()
-
-    if not athlete_resp.data:
-        return []
-
-    club_id = athlete_resp.data.get("club_id")
-
+def get_timers(club_id: str = Depends(require_club_membership)):
+    # Timers are club-scoped, and the club now comes from the caller's active
+    # membership. It cannot be read off the person: as_athlete is a view that
+    # carries no club_id.
     resp = supabase.table("as_routine_timers") \
         .select("*") \
         .eq("club_id", club_id) \
@@ -32,25 +22,16 @@ def get_timers(user_payload: dict = Depends(verify_jwt)):
 
 
 @router.post("/routines/timers")
-def create_timer(timer: RoutineTimerInput, user_payload: dict = Depends(verify_jwt)):
-    user_id = user_payload.get("uid")
-
-    athlete_resp = supabase.table("as_athlete") \
-        .select("club_id") \
-        .eq("id", user_id) \
-        .single() \
-        .execute()
-
-    if not athlete_resp.data:
-        raise HTTPException(status_code=404, detail="User not associated with a club.")
-
-    club_id = athlete_resp.data.get("club_id")
-
+def create_timer(
+    timer: RoutineTimerInput,
+    created_by: str = Depends(get_current_person_id),
+    club_id: str = Depends(require_club_membership),
+):
     insert_resp = supabase.table("as_routine_timers").insert({
         "club_id": club_id,
         "title": timer.title,
         "duration_seconds": timer.duration_seconds,
-        "created_by": user_id,
+        "created_by": created_by,
     }).execute()
 
     return insert_resp.data[0] if insert_resp.data else {}

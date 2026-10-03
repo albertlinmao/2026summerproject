@@ -106,3 +106,13 @@ ORDER BY id ASC
 
 DELETE FROM public.as_meet_routine_result
 WHERE meet_id = 'REPLACE_WITH_MEET_ID_FROM_STEP02'
+
+
+////// delete tables in the tenant side
+DELETE FROM public.tenant
+DELETE FROM public.tenant_api_keys
+DELETE FROM public.user_profile
+DELETE FROM public.role_permission
+DELETE FROM public.role
+DELETE FROM public.permission
+DELETE FROM public.audit_log

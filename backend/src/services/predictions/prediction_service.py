@@ -22,13 +22,13 @@ PLATEAU_WINDOW = 5
 class PredictionService:
     """Next-score prediction with plateau risk and confidence interval."""
 
-    def predict(self, athlete_id: str, scores: list[float]) -> PredictiveInsight:
+    def predict(self, person_id: str, scores: list[float]) -> PredictiveInsight:
         clean = [float(s) for s in scores if s is not None]
 
         if len(clean) < 2:
             # Baseline average fallback for new swimmers.
             return PredictiveInsight(
-                athlete_id=athlete_id,
+                person_id=person_id,
                 next_score_prediction=BASELINE_SCORE,
                 plateau_risk=False,
                 confidence_interval=5.0,
@@ -39,7 +39,7 @@ class PredictionService:
         plateau = self._plateau_risk(clean)
 
         return PredictiveInsight(
-            athlete_id=athlete_id,
+            person_id=person_id,
             next_score_prediction=round(prediction, 2),
             plateau_risk=plateau,
             confidence_interval=round(ci, 2),

@@ -68,14 +68,14 @@ interface DashboardResponse {
             <app-team-overview-widget
               [overview]="teamOverview"
               [loading]="loading"
-              [selectedAthleteId]="selectedAthlete()?.athlete_id ?? null"
+              [selectedPersonId]="selectedAthlete()?.person_id ?? null"
               (athleteSelected)="onAthleteSelected($event)"
             ></app-team-overview-widget>
           </div>
 
           <div class="span-4">
             <app-prediction-widget
-              [athleteId]="selectedAthlete()?.athlete_id ?? null"
+              [personId]="selectedAthlete()?.person_id ?? null"
               [athleteName]="selectedAthlete()?.name ?? null"
             ></app-prediction-widget>
           </div>
@@ -89,7 +89,7 @@ interface DashboardResponse {
 
           <div class="span-6">
             <app-ai-recommendation-widget
-              [athleteId]="selectedAthlete()?.athlete_id ?? null"
+              [personId]="selectedAthlete()?.person_id ?? null"
               [athleteName]="selectedAthlete()?.name ?? null"
             ></app-ai-recommendation-widget>
           </div>

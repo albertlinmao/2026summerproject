@@ -60,6 +60,75 @@ async function isTenantSuspended(tenantId: string): Promise<boolean> {
   return false;
 }
 
+// Statuses that grant access. Mirrors ACTIVE_MEMBERSHIP_STATUSES in backend/src/core/auth.py.
+const ACTIVE_MEMBERSHIP_STATUSES = ['invited', 'active'];
+
+/**
+ * Resolve the caller's person and their club scope.
+ *
+ * `sub` is the ONLY claim this gateway trusts. Everything else the identity
+ * provider puts in the token (person_id, club_ids, roles_by_club, app_metadata) is
+ * a cache that the caller can present stale, so the scope is re-derived here from
+ * `as_person_identity` + `as_club_membership`:
+ *
+ *   sub -> as_person_identity.subject_id -> person_id
+ *   person_id -> as_club_membership (status invited|active) -> club_ids
+ *
+ * This matters because the backend calls PostgREST with the service-role key,
+ * which bypasses RLS entirely. Forwarding a membership-derived club scope is what
+ * keeps the downstream authorization (src/core/auth.py) sound: a token that
+ * claims a club the caller was removed from cannot widen access, and offboarding
+ * takes effect here rather than at token expiry.
+ *
+ * A caller with no provisioned person is rejected rather than forwarded, so the
+ * backend never has to guess who is asking.
+ */
+async function resolveCallerScope(subjectId: string): Promise<{ personId: string, clubIds: string[] } | null> {
+  const headers = {
+    'apikey': SUPABASE_SERVICE_ROLE_KEY,
+    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    'Accept': 'application/json'
+  };
+
+  let personId: string | null = null;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/as_person_identity?subject_id=eq.${encodeURIComponent(subjectId)}&select=person_id&limit=1`,
+      { headers }
+    );
+    if (!res.ok) {
+      console.error("Person identity lookup failed:", res.status);
+      return null;
+    }
+    const rows = await res.json();
+    personId = rows.length > 0 ? rows[0].person_id : null;
+  } catch (err) {
+    console.error("Error resolving person identity:", err);
+    return null;
+  }
+
+  // A login is optional: a valid token may have no person provisioned yet.
+  if (!personId) {
+    return null;
+  }
+
+  const statuses = ACTIVE_MEMBERSHIP_STATUSES.join(",");
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/as_club_membership?person_id=eq.${encodeURIComponent(personId)}` +
+      `&status=in.(${statuses})&select=club_id`,
+    { headers }
+  );
+  if (!res.ok) {
+    console.error("Membership lookup failed:", res.status);
+    return null;
+  }
+
+  const memberships = await res.json();
+  const clubIds = [...new Set(memberships.map((m: { club_id: string }) => m.club_id))] as string[];
+
+  return { personId, clubIds };
+}
+
 serve(async (req, connInfo) => {
   // CORS handling
   if (req.method === 'OPTIONS') {
@@ -103,8 +172,11 @@ serve(async (req, connInfo) => {
   try {
     const secret = new TextEncoder().encode(JWT_SECRET);
     const { payload } = await jose.jwtVerify(token, secret);
-    
-    const userId = payload.sub;
+
+    // `sub` is the only trusted claim (see resolveCallerScope). The tenant id
+    // below is read from app_metadata purely to consult the suspension list;
+    // it never contributes to the forwarded scope.
+    const subjectId = payload.sub;
     const tenantId = payload.app_metadata?.tenant_id;
 
     if (!tenantId) {
@@ -116,10 +188,23 @@ serve(async (req, connInfo) => {
        return new Response(JSON.stringify({ error: 'Tenant is suspended' }), { status: 403 });
     }
 
+    if (!subjectId) {
+      return new Response(JSON.stringify({ error: 'Subject missing in token' }), { status: 403 });
+    }
+
+    // Re-derive identity and club scope from the database, not from the token.
+    const scope = await resolveCallerScope(subjectId);
+    if (!scope) {
+      return new Response(JSON.stringify({ error: 'No club membership is associated with this account' }), { status: 403 });
+    }
+    if (scope.clubIds.length === 0) {
+      return new Response(JSON.stringify({ error: 'No active club membership is associated with this account' }), { status: 403 });
+    }
+
     const backendReqUrl = `${BACKEND_URL}${url.pathname}${url.search}`;
     const headers = new Headers(req.headers);
-    headers.set('X-User-Id', userId!);
-    headers.set('X-Tenant-Id', tenantId);
+    headers.set('X-Person-Id', scope.personId);
+    headers.set('X-Club-Ids', scope.clubIds.join(','));
     headers.set('X-Internal-Secret', INTERNAL_SECRET);
     
     // Generate Trace ID

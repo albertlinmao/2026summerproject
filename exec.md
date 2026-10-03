@@ -12,7 +12,7 @@ Create demonstration data to fulfill the requirements of **User Story 1 - Coach 
    - Verified that the relevant tables existed in the local PostgreSQL instance.
    - Checked the columns for the analytical entities to construct proper insert queries.
 
-3. **Data Generation Script (`generate_demo_data.py`)**:
+3. **Data Generation Script (`scripts/tmp/AdhocDataMigration/generate_demo_data.py`)**:
    - Created a Python script that connects to the local PostgreSQL database using `psycopg2`.
    - **Club Initialization**: Ensures a base club (Seattle Synchro - 'SST') exists to group the athletes.
    - **Athletes**: Inserted a set of mock athletes (e.g., Emma Johnson, Olivia Davis) linked to the 'SST' club.

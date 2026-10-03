@@ -1,13 +1,27 @@
+# ============================================================================
+# SUBSET contract for the Artistic Swimming Analytics Dashboard.
+# `contracts/openapi.yaml` is canonical; if this file disagrees with it, the
+# canonical file wins. This file only summarises the dashboard-facing paths.
+#
+# Identity vocabulary follows specs/001-analytics-dashboard/identity-contract.md:
+#   - the path identifier is `person_id`; the domain word "athlete" stays in the path
+#   - only the `sub` claim is authoritative; `athlete_ids` and a scalar `club_id`
+#     claim are forbidden. Roles come from `as_club_membership` per club.
+# ============================================================================
 openapi: 3.0.3
 info:
   title: Artistic Swimming Analytics API
   version: 1.0.0
   description: Backend services for the Analytics Dashboard providing team insights, predictions, and aggregated competition data.
+servers:
+  - url: /api/v1
 paths:
   /analytics/dashboard:
     get:
       summary: Get user dashboard overview
-      description: Returns unified dashboard widgets based on the user's role (Athlete, Coach, Admin). Merges permissions if multiple roles exist.
+      description: >-
+        Returns unified dashboard widgets based on the caller's `as_club_membership`
+        rows, one per club. Permissions for multiple roles are merged.
       security:
         - BearerAuth: []
       responses:
@@ -19,13 +33,32 @@ paths:
                 $ref: '#/components/schemas/DashboardOverview'
         '401':
           description: Unauthorized (Identity API unreachable or invalid token)
-  /analytics/athletes/{athleteId}/prediction:
+  /athletes/{person_id}/insights:
     get:
-      summary: Get predictive insights for an athlete
+      summary: Get personalized predictions and AI Coach recommendations for a person
       security:
         - BearerAuth: []
       parameters:
-        - name: athleteId
+        - name: person_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Predictive insights and coaching recommendations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonInsights'
+  /analytics/athletes/{person_id}/prediction:
+    get:
+      summary: Get predictive insights for a person
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: person_id
           in: path
           required: true
           schema:
@@ -38,13 +71,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PredictiveInsight'
-  /analytics/athletes/{athleteId}/recommendation:
+  /analytics/athletes/{person_id}/recommendation:
     get:
       summary: Get AI coaching recommendation
       security:
         - BearerAuth: []
       parameters:
-        - name: athleteId
+        - name: person_id
           in: path
           required: true
           schema:
@@ -65,14 +98,56 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: >-
+        JWT from the `001-multi-tenant-user-api`. The `sub` claim is required and must
+        equal an `as_person_identity.subject_id`; it is the only claim RLS trusts.
+        `person_id`, `club_ids`, `roles_by_club`, and `permissions` are an optional,
+        non-authoritative cache. `athlete_ids` and a scalar `club_id` are forbidden.
   schemas:
+    Role:
+      type: string
+      description: >-
+        Coarse role carried on an `as_club_membership` row. Authorization is always
+        evaluated as (person, club, role), never as a flat role list. Display-only
+        distinctions such as `Lead Coach` or `Team Captain` live in `MembershipTitle`.
+      enum: [admin, coach, swimmer, parent, official]
+    Person:
+      type: object
+      description: >-
+        A human being. Holds no credentials and no `club_id`, so one person may
+        belong to several clubs and a login is optional. A person becomes an
+        athlete or a coach by holding an active membership, not by being one.
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        given_name:
+          type: string
+        family_name:
+          type: string
+        middle_name:
+          type: string
+        birth_date:
+          type: string
+          format: date
     DashboardOverview:
       type: object
+      description: >-
+        Unified dashboard. One call serves every club in the caller's
+        `as_club_membership` set; permissions for multiple roles are merged.
       properties:
+        person_id:
+          type: string
+          format: uuid
         role_views:
           type: array
           items:
+            $ref: '#/components/schemas/Role'
+        club_ids:
+          type: array
+          items:
             type: string
+            format: uuid
         team_heatmap:
           type: array
           items:
@@ -80,7 +155,7 @@ components:
     HeatmapData:
       type: object
       properties:
-        athlete_id:
+        person_id:
           type: string
           format: uuid
         figure_weaknesses:
@@ -91,9 +166,22 @@ components:
           type: number
         routine_score:
           type: number
+    PersonInsights:
+      type: object
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        projected_score:
+          type: number
+        recommendation_text:
+          type: string
     PredictiveInsight:
       type: object
       properties:
+        person_id:
+          type: string
+          format: uuid
         next_score_prediction:
           type: number
         plateau_risk:
@@ -101,6 +189,9 @@ components:
     CoachingRecommendation:
       type: object
       properties:
+        person_id:
+          type: string
+          format: uuid
         recommendation_text:
           type: string
         weakest_figure:

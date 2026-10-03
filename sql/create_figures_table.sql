@@ -1,5 +1,21 @@
 -- Create normalized tables for parsed figure results
 -- Run this in your Supabase SQL editor or psql against the project's DB
+--
+-- IDENTITY: these are imported-result tables, not identity tables. They carry no
+-- club_id and no reference to a canonical person. `athlete_name`,
+-- `athlete_birth_year` and `team_athletes` are verbatim fields transcribed from
+-- the official result PDFs and keep their names as data lineage; they are NOT
+-- identity references.
+--
+-- The authoritative identity model is specs/001-analytics-dashboard/identity-contract.md:
+-- a person is `as_person`, a club is `as_club`, and membership is the edge in
+-- `as_club_membership`. A person has no club_id; a login (as_person_identity) is
+-- optional. Anything that references a canonical person is `person_id`.
+--
+-- Mapping an immutable result row to a person lives in `as_result_person_link`
+-- (result_table, result_id, athlete_name, person_id) -- see
+-- backend/src/supabase/migrations/20260826_person_identity_migration.sql. Until
+-- that link is populated, per-person analytics resolve these rows by printed name.
 
 create extension if not exists "pgcrypto";
 

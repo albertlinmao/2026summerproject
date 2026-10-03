@@ -16,7 +16,7 @@ import { LoadingSpinnerComponent } from '../../ui/loading-spinner.component';
 import { environment } from '../../../../environments/environment';
 
 interface RecommendationResponse {
-  athlete_id: string;
+  person_id: string;
   recommendation_text: string;
   generated_at: string | null;
   weakest_figure: string;
@@ -35,7 +35,7 @@ export const AI_UNAVAILABLE_TEXT = 'AI temporarily unavailable';
   imports: [CardComponent, TypographyComponent, LoadingSpinnerComponent],
   template: `
     <app-card title="AI Coach Focus" [subtitle]="subtitle()">
-      @if (!athleteId) {
+      @if (!personId) {
         <app-typography variant="body-medium" color="on-surface-variant">
           Select an athlete to view their AI practice focus.
         </app-typography>
@@ -88,7 +88,7 @@ export const AI_UNAVAILABLE_TEXT = 'AI temporarily unavailable';
   ],
 })
 export class AIRecommendationWidgetComponent implements OnChanges {
-  @Input() athleteId: string | null = null;
+  @Input() personId: string | null = null;
   @Input() athleteName: string | null = null;
 
   recommendation: RecommendationResponse | null = null;
@@ -101,7 +101,7 @@ export class AIRecommendationWidgetComponent implements OnChanges {
   private cdr = inject(ChangeDetectorRef);
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['athleteId'] && this.athleteId) {
+    if (changes['personId'] && this.personId) {
       void this.load();
     }
   }
@@ -111,7 +111,7 @@ export class AIRecommendationWidgetComponent implements OnChanges {
   }
 
   private async load(): Promise<void> {
-    if (!this.athleteId) {
+    if (!this.personId) {
       return;
     }
     this.loading = true;
@@ -120,7 +120,7 @@ export class AIRecommendationWidgetComponent implements OnChanges {
     try {
       const res = await firstValueFrom(
         this.http.get<RecommendationResponse>(
-          `${environment.apiUrl}/analytics/athletes/${this.athleteId}/recommendation`
+          `${environment.apiUrl}/analytics/athletes/${this.personId}/recommendation`
         )
       );
       if (res.recommendation_text === AI_UNAVAILABLE_TEXT) {

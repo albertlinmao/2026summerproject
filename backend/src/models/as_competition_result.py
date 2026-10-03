@@ -5,7 +5,13 @@ from pydantic import BaseModel, Field
 
 
 class FigureResultRecord(BaseModel):
-    """A single figure result row from as_meet_figure_result."""
+    """A single figure result row from as_meet_figure_result.
+
+    ``athlete_name`` / ``athlete_birth_year`` are verbatim fields from the source
+    PDF and are immutable lineage, not identity references. ``person_id`` is the
+    canonical person resolved through ``as_result_person_link`` and is null until
+    that resolution has been made.
+    """
 
     id: str
     meet_id: str
@@ -15,6 +21,7 @@ class FigureResultRecord(BaseModel):
     team_name: Optional[str] = None
     athlete_name: str
     athlete_birth_year: Optional[int] = None
+    person_id: Optional[str] = None
     penalty: Optional[str] = None
     total_score: Optional[float] = None
     figure_score: Optional[float] = None
@@ -24,7 +31,13 @@ class FigureResultRecord(BaseModel):
 
 
 class RoutineResultRecord(BaseModel):
-    """A single routine result row from as_meet_routine_result."""
+    """A single routine result row from as_meet_routine_result.
+
+    ``team_athletes`` is the printed-names array from the source PDF, i.e. lineage.
+    Per-athlete person resolution lives in ``as_result_person_link``, which keys on
+    ``(result_table, result_id, athlete_name)`` because every athlete in a routine
+    shares one ``result_id``.
+    """
 
     id: str
     meet_id: str
@@ -42,13 +55,14 @@ class RoutineResultRecord(BaseModel):
 
 
 class CompetitionResult(BaseModel):
-    """Aggregated competition result for an athlete.
+    """One person's result at one meet.
 
-    Aggregates scores from as_meet_figure_result and as_meet_routine_result,
-    matched to the athlete via fuzzy name + birth year + club/team_code.
+    Aggregation is keyed on ``person_id`` so it survives a club transfer, and
+    ``athlete_name`` is retained as the printed name for display and for
+    traceability back to the immutable source row.
     """
 
-    athlete_id: str
+    person_id: str
     athlete_name: str
     meet_id: str
     meet_date: Optional[date] = None

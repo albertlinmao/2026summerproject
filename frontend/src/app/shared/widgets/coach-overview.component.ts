@@ -26,7 +26,7 @@ import { HeatmapData } from '../../store/dashboard.store';
             @for (athlete of heatmapData; track athlete) {
               <li class="prediction-card">
                 <div class="athlete-header">
-                  <strong>{{ athlete.athlete_id }}</strong>
+                  <strong>{{ athlete.person_id }}</strong>
                 </div>
                 <div class="scores-grid">
                   <div class="score-item">

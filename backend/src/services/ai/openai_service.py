@@ -33,7 +33,7 @@ SYSTEM_PROMPT = (
 
 
 def generate_coaching_recommendation(
-    athlete_id: str,
+    person_id: str,
     recent_scores: list[dict],
 ) -> CoachingRecommendation:
     score_text = "\n".join(
@@ -49,7 +49,7 @@ def generate_coaching_recommendation(
                 {
                     "role": "user",
                     "content": (
-                        f"Athlete ID: {athlete_id}\n\nRecent scores:\n{score_text}\n\n"
+                        f"Athlete ID: {person_id}\n\nRecent scores:\n{score_text}\n\n"
                         "Provide: 1) a coaching recommendation, 2) the weakest figure name."
                     ),
                 },
@@ -71,7 +71,7 @@ def generate_coaching_recommendation(
                     break
 
         return CoachingRecommendation(
-            athlete_id=athlete_id,
+            person_id=person_id,
             recommendation_text=recommendation_text,
             generated_at=datetime.now(timezone.utc),
             weakest_figure=weakest_figure,
