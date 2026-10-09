@@ -6,7 +6,7 @@ const eslintConfigPrettier = require('eslint-config-prettier');
 
 module.exports = tseslint.config(
   {
-    ignores: ['dist/**/*', 'coverage/**/*', 'out-tsc/**/*'],
+    ignores: ['node_modules/**/*', 'dist/**/*', 'build/**/*', 'coverage/**/*', 'out-tsc/**/*', '*.min.js', '*.min.css'],
   },
   {
     files: ['**/*.ts'],

@@ -1,0 +1,18 @@
+# Terraform working directory: supabase/terraform/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.git/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

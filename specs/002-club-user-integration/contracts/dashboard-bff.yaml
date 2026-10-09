@@ -1,0 +1,291 @@
+openapi: 3.1.0
+
+info:
+  title: Dashboard BFF — Authentication Proxy
+  version: 002.0.0
+  description: |
+    Contract for feature `002-club-user-integration` — **dashboard backend**
+    (`backend/`, FastAPI on `:8080`, prefix `/api`).
+
+    Only the **public, unauthenticated** auth surface lives here. Every route exists to
+    keep `X-Internal-Secret` away from the browser: the browser calls the BFF, the BFF
+    calls the user service with the secret attached.
+
+    Admin routes (`members`, `teams`, `person-links`) are also proxied from the dashboard
+    but require a verified bearer token and are specified in
+    [`openapi.yaml`](./openapi.yaml) against the user service.
+
+    > **`X-Tenant-Id` derivation (REQ-011, OQ #8).** On every forwarded admin call the BFF
+    > derives the tenant from the **caller's own active membership**, resolved per request
+    > through `as_club_membership → as_club → as_club.tenant_id`. `as_club.tenant_id` is a
+    > `NOT NULL` FK to `tenant(id)` (tasks.md T006); the `as_club.code` = `tenant.code`
+    > string match is retained **only** as the one-time backfill key and MUST NOT remain the
+    > link. A caller with memberships at two clubs MUST NOT be able to select the tenant by
+    > sending a header — the header is an output of resolution, never an input to it, and
+    > never read from a token claim.
+
+    > **This contract changes in Phase B.** Today `POST /api/auth/login` mints an
+    > **HS256 dev token** (`iss="sst-demo-auth"`) inside the dashboard, gated only on
+    > `APP_ENV != "production"` — and `APP_ENV` is unset in `.env`, so the dev branch is
+    > live. `GET /api/auth/demo-user` is not gated at all and returns a session for an
+    > arbitrary `person_id`. Under this contract both are replaced by forwarding to the
+    > user service, and any residual demo endpoint requires `APP_ENV=development` **and**
+    > `DEMO_AUTH_ENABLED=true`. See spec REQ-009 and research.md D4.
+
+    ### Current-state defects this contract must not carry forward
+    - `backend/src/api/auth.py:verify_jwt` decodes with `verify_signature: False` against
+      a hard-coded `"SECRET"` and is the dependency for `insights`, `markers`, `uploads`
+      and `timers`. Any well-formed HS256 body passes. It is removed in Phase B (REQ-009).
+    - Signature verification must be unconditional. There is no mode in which a data
+      route trusts an unverified token.
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://127.0.0.1:8080/api
+    description: Dashboard backend, local
+  - url: http://localhost:18081/api
+    description: Dashboard backend via root compose port mapping
+
+tags:
+  - name: bff-auth
+    description: Public authentication proxies
+
+paths:
+  /auth/login:
+    post:
+      tags: [bff-auth]
+      operationId: bffLogin
+      summary: Proxy login to the user service
+      description: |
+        Forwards to user-service `POST /auth/login` with `X-Internal-Secret` and returns
+        the response verbatim, including the `403 PENDING_APPROVAL` /
+        `403 ACCOUNT_SUSPENDED` / `403 NO_ACTIVE_MEMBERSHIP` distinctions.
+
+        The browser must be able to distinguish *pending* from *wrong password* — a
+        generic error on a 403 would read as an authentication failure and push users to
+        retry passwords that are correct.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Forwarded verbatim
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: '`INVALID_CREDENTIALS`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Pending approval, suspended, or no active membership
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: User service unreachable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: Demo auth is disabled and the user service is not configured
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/register:
+    post:
+      tags: [bff-auth]
+      operationId: bffRegister
+      summary: Proxy member registration
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Registered, pending approval. No token is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: '`SEEDED_ACCOUNT_EXISTS` — confirm before takeover'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/register-club:
+    post:
+      tags: [bff-auth]
+      operationId: bffRegisterClub
+      summary: Proxy club registration, then mint an owner session
+      description: |
+        Forwards to user-service `POST /auth/register-club`, then calls
+        `POST /auth/login` with the owner's credentials and returns an owner session so
+        the new club admin lands authenticated.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterClubRequest' }
+      responses:
+        '201':
+          description: Club created; response carries an owner session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/clubs:
+    get:
+      tags: [bff-auth]
+      operationId: bffListClubs
+      summary: Proxy the public club list for the registration page
+      security: []
+      responses:
+        '200':
+          description: Clubs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ClubRef' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+components:
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+
+    LoginResponse:
+      type: object
+      required: [access_token, token_type, expires_in, person]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer }
+        person: { $ref: '#/components/schemas/Person' }
+        club_ids:
+          type: array
+          items: { type: string, format: uuid }
+          description: Cache only — the club switcher, never an authorization input.
+        roles_by_club:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string, enum: [admin, coach, swimmer, parent, official] }
+          description: Cache only — UI route matching.
+        team_ids:
+          type: array
+          items: { type: string, format: uuid }
+        permissions:
+          type: array
+          items: { type: string }
+          description: Advisory; the dashboard does not enforce from it.
+
+    RegisterRequest:
+      type: object
+      required: [email, password, first_name, last_name, club_id, role]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 8 }
+        first_name: { type: string }
+        last_name: { type: string }
+        club_id: { type: string, format: uuid }
+        role:
+          type: string
+          enum: [admin, coach, swimmer, parent, official]
+          description: '`admin` is rejected — granted in-club only.'
+        birth_date: { type: [string, 'null'], format: date }
+
+    RegisterResponse:
+      type: object
+      required: [person_id, status]
+      properties:
+        person_id: { type: string, format: uuid }
+        status: { type: string, const: invited }
+
+    RegisterClubRequest:
+      type: object
+      required: [name, owner_email, owner_password]
+      properties:
+        name: { type: string, maxLength: 200 }
+        code: { type: string, maxLength: 50 }
+        city: { type: [string, 'null'] }
+        owner_email: { type: string, format: email }
+        owner_password: { type: string, format: password, minLength: 8 }
+        owner_first_name: { type: string }
+        owner_last_name: { type: string }
+
+    Person:
+      type: object
+      required: [person_id]
+      properties:
+        person_id: { type: string, format: uuid }
+        given_name: { type: [string, 'null'] }
+        middle_name: { type: [string, 'null'] }
+        family_name: { type: [string, 'null'] }
+        birth_date: { type: [string, 'null'], format: date }
+        has_account:
+          type: boolean
+          description: False for a person created with no login.
+
+    ClubRef:
+      type: object
+      required: [id, name, tenant_id]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: string }
+        city: { type: [string, 'null'] }
+        tenant_id:
+          type: string
+          format: uuid
+          description: Owning tenant — the source the BFF derives `X-Tenant-Id` from (REQ-011).
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: |
+            `INVALID_CREDENTIALS`, `PENDING_APPROVAL`, `ACCOUNT_SUSPENDED`,
+            `NO_ACTIVE_MEMBERSHIP`, `PASSWORD_NOT_CHANGED`, `SEEDED_ACCOUNT_EXISTS`.
+        message: { type: string }
+        trace_id: { type: [string, 'null'] }
+
+  responses:
+    BadRequest:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadGateway:
+      description: Upstream user service unreachable or returned an unusable response
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Too many attempts
+      headers:
+        Retry-After: { schema: { type: integer } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

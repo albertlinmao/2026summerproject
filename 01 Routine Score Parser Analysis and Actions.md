@@ -95,6 +95,14 @@ Each athlete loses the same five rows: all four element rows plus its **first** 
 
 23 + 18 = **41**, reproducing the warning exactly.
 
+> **This arithmetic does not add up.** The 9 AI rows in the table above are dropped by the
+> same mechanism, so the three groups total **50**, not 41. And "every athlete loses four
+> element rows plus the first AI row" would be 45 across nine athletes. Either those 9 AI
+> rows were not in fact dropped, or the 23/18 element split is wrong. I could not re-derive
+> it — the old regex parser no longer exists, it has been replaced. The *cause* in the next
+> section (five judge columns read as four) is unaffected and was confirmed against the
+> corrected parser on the real corpus.
+
 The 22 rows that *did* match are all wrong:
 
 - 18 plain AI rows — J5 stored as the line total.
@@ -111,21 +119,30 @@ The 22 rows that *did* match are all wrong:
 Recomputing every scoring row from the judge values and comparing against the printed line
 totals gave **zero mismatches**.
 
+> **Corrected.** The `x DD / 2` below is **wrong**. The real rule is `x DD x factor`, where
+> `factor` is the number in brackets after the element name (`HYBRID (0.5)`). It looked
+> like `DD / 2` only because every element quoted in this document is HYBRID with a factor
+> of `0.5`, so the two agree on all of them. The full 2026 corpus breaks it immediately: a
+> `Choreo and Music (1.4)` row is `x 1.4`. The corrected parser also adds the
+> synchronization deduction to the Routine, which the line below omits.
+
 ```
-element line total = mean of the middle three of J1..J5  x  awarded DD  /  2
+element line total = mean of the middle three of J1..J5  x  awarded DD  x  factor
 AI line total      = mean of the middle three of J1..J5  x  factor  x  3
+STC category total = mean of printed fault counts  x  factor        (no x3)
 DD used            = the AWARDED value in the DD column, NOT the Ref value
 printed Total      = sum of the four element line totals
 printed AI Total   = sum of the three AI line totals
-printed Routine    = elements Total + AI Total
+printed Routine    = elements Total + AI Total + synchronization deduction
 ```
 
 Worked examples:
 
 - First row — sorted `5.50 6.25 6.50 6.50 6.50`, trim to `6.50 6.50 6.25`, mean `6.41667`,
-  `x 7.000 / 2 = 22.4583`. Matches the sheet.
+  `x 7.000 x 0.5 = 22.4583`. Matches the sheet — but only because this row's factor
+  happens to be `0.5`.
 - Deduction row — sorted `5.50 6.00 6.00 6.25 6.25`, trim to `6.00 6.00 6.25`, mean `6.08333`,
-  `x 0.500 / 2 = 1.5208`. Confirms the awarded DD scores the element, and that
+  `x 0.500 x 0.5 = 1.5208`. Confirms the awarded DD scores the element, and that
   `TOTAL DIFFICULTY 21.500 28.000` is `7+7+7+0.5` against `7+7+7+7`.
 
 All nine athletes reconcile against their own printed totals — elements, AI, and routine.

@@ -201,23 +201,74 @@ class IngestFlagTests(unittest.TestCase):
 
     def test_provisioning_runs_by_default(self):
         calls = []
-        parsed = {"athletes": []}
+        linked = []
+        # Shaped like a real parse result: main() renders a PDF summary and a write plan
+        # before it writes, so a stub with only "athletes" is no longer a fair mock.
+        parsed = {"athletes": [], "judges": [], "errors": [], "warnings": [],
+                  "stats": {"scoring_rows": 0, "unparsed": 0, "unreconciled": 0},
+                  "event": {"event_name": "Test Event", "event_date": "2026-01-01",
+                            "host_city": "Nowhere"},
+                  "meet": {"name": "Test Invitational", "meet_date": "2026-01-01"}}
 
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "fake.pdf"
             pdf.write_bytes(b"%PDF-1.4 not really a pdf")
             with patch.object(ingest_routines, "extract_text_from_pdf", return_value=""), \
+                 patch.object(ingest_routines, "classify_pdf",
+                              return_value={"is_routine": True, "reason": "",
+                                            "signals": {}, "scoring_rows": 0}), \
                  patch.object(ingest_routines, "parse_routine_pdf_text", return_value=parsed), \
                  patch.object(ingest_routines, "insert_rows_to_supabase",
                               return_value="wrote 0"), \
                  patch.object(ingest_routines, "describe", return_value=""), \
                  patch.object(ingest_routines, "synchronized_meet",
                               side_effect=lambda *a, **k: calls.append(a)), \
+                 patch.object(ingest_routines, "attach_identities",
+                              side_effect=lambda *a, **k: linked.append(a) or "linked"), \
                  patch.object(ingest_routines, "print", lambda *a, **k: None):
                 rc = ingest_routines.main(["ingest", str(pdf)])
 
         self.assertEqual(rc, 0)
         self.assertEqual(len(calls), 1, "provisioning is on by default")
+        self.assertEqual(len(linked), 1, "identity linking must run on the default path")
+
+    def test_no_provision_still_links_identities(self):
+        """--no-provision skips accounts, not attribution.
+
+        The whole reason identity linking is a separate step: a result that is stored
+        but not attached to a person is invisible to the dashboard, and that must not
+        depend on Auth provisioning succeeding.
+        """
+        calls = []
+        linked = []
+        parsed = {"athletes": [], "judges": [], "errors": [], "warnings": [],
+                  "stats": {"scoring_rows": 0, "unparsed": 0, "unreconciled": 0},
+                  "event": {"event_name": "Test Event", "event_date": "2026-01-01",
+                            "host_city": "Nowhere"},
+                  "meet": {"name": "Test Invitational", "meet_date": "2026-01-01"}}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "fake.pdf"
+            pdf.write_bytes(b"%PDF-1.4 not really a pdf")
+            with patch.object(ingest_routines, "extract_text_from_pdf", return_value=""), \
+                 patch.object(ingest_routines, "classify_pdf",
+                              return_value={"is_routine": True, "reason": "",
+                                            "signals": {}, "scoring_rows": 0}), \
+                 patch.object(ingest_routines, "parse_routine_pdf_text", return_value=parsed), \
+                 patch.object(ingest_routines, "insert_rows_to_supabase",
+                              return_value="wrote 0"), \
+                 patch.object(ingest_routines, "describe", return_value=""), \
+                 patch.object(ingest_routines, "synchronized_meet",
+                              side_effect=lambda *a, **k: calls.append(a)), \
+                 patch.object(ingest_routines, "attach_identities",
+                              side_effect=lambda *a, **k: linked.append(a) or "linked"), \
+                 patch.object(ingest_routines, "print", lambda *a, **k: None):
+                rc = ingest_routines.main(["ingest", str(pdf), "--no-provision"])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls, [], "--no-provision must not provision accounts")
+        self.assertEqual(len(linked), 1,
+                         "--no-provision must still link athletes to people")
 
 
 class SeededStatusTests(unittest.TestCase):

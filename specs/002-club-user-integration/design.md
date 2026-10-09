@@ -3,7 +3,7 @@
 **Feature**: `002-club-user-integration`
 **Created**: 2026-09-16
 **Corrected**: identity model aligned to
-[`specs/001-analytics-dashboard/identity-contract.md`](../../001-analytics-dashboard/identity-contract.md),
+[`specs/001-analytics-dashboard/identity-contract.md`](../001-analytics-dashboard/identity-contract.md),
 which is authoritative. See §1.1 for the audit trail.
 **Status**: Design (not started — this document precedes implementation)
 **Applies to**: `001-analytics-dashboard` (dashboard app) + `001-multi-tenant-user-api` (user-management service)
@@ -184,7 +184,7 @@ All in the user-service Postgres (its Supabase instance). PII stays encrypted in
 keep sign-ups minimal).
 
 The vocabulary is **not** re-invented here — it is fixed by
-[`identity-contract.md` §2](../../001-analytics-dashboard/identity-contract.md) and
+[`identity-contract.md` §2](../001-analytics-dashboard/identity-contract.md) and
 mirrored into the dashboard:
 
 - `role` ∈ `admin | coach | swimmer | parent | official` — lowercase, coarse, drives RLS.

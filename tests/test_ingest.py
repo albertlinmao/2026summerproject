@@ -308,17 +308,32 @@ class ParserHonestyTests(unittest.TestCase):
             ]
             self.assertIn(-15.9667, penalties)
 
-    def test_dropped_scoring_lines_are_reported(self):
+    def test_no_scoring_line_is_silently_dropped(self):
+        # This test exists because the old parser dropped 7 of the 8 ACRO lines on this
+        # sheet and 9 AI lines on others, then reported nothing. It used to assert that a
+        # "did not match" warning was raised. The parser now reads every line, so the
+        # guarantee is stronger and is asserted directly: nothing unparsed, nothing that
+        # fails to reconcile, and the element panel summing to the printed cumulative.
         from scripts.ingest_routines import parse_routine_pdf_text, extract_text_from_pdf
         pdf = (ROOT / "swim-meets/2026/20260321_Classic_Snohomish_WA"
                       "/Age Group 18-19 Acrobatic Routine Free Final.pdf")
         if not pdf.exists():
             self.skipTest("fixture PDF not present")
         parsed = parse_routine_pdf_text(extract_text_from_pdf(str(pdf)))
-        self.assertTrue(
-            any("did not match" in w for w in parsed["warnings"]),
-            "the dropped ACRO lines must be surfaced, not silently skipped",
-        )
+        self.assertEqual(parsed["stats"]["unparsed"], 0,
+                         f"scoring rows were dropped: {parsed['errors']}")
+        self.assertEqual(parsed["stats"]["unreconciled"], 0,
+                         f"scoring rows did not reconcile: {parsed['errors']}")
+        self.assertEqual(parsed["errors"], [])
+        athlete = parsed["athletes"][0]
+        elements = athlete["routine_scores"]["element_scores"]
+        self.assertEqual(len(elements), 7, "all seven ACRO rows should be read")
+        self.assertAlmostEqual(
+            athlete["element_total"], 41.9663, places=3,
+            msg="element panel must sum the printed line totals")
+        self.assertAlmostEqual(
+            athlete["artisticimpression_total"], 74.0, places=3)
+        self.assertAlmostEqual(athlete["routine_score"], 99.9996, places=3)
 
 
 class ModuleImportTests(unittest.TestCase):
@@ -350,6 +365,404 @@ class SupabaseConfigTests(unittest.TestCase):
                     config = C.get_supabase_config()
         self.assertEqual(config["url"], "http://localhost:8000")
         self.assertEqual(config["key"], "test-service-role-key")
+
+
+class ColumnMapTests(unittest.TestCase):
+    """The header decides the geometry. Judge count is per meet, not per parser."""
+
+    # Verbatim from the sample PDFs. The spacing matters: the column map is built from
+    # these character offsets, so the fixtures below pair real headers with real rows.
+    HEADER5 = ("Code Rank Draw Team             Ref DD    J1   J2   J3   J4   J5"
+               "     Total Pen.    Total        Routine ")
+    HEADER3 = ("Code Rank Draw Team             Ref DD    J1   J2   J3"
+               "     Total Pen.    Total        Routine ")
+    ROW5 = ("          HYBRID (0.5)           7.000 6.50 6.50 6.50 6.25 5.50 22.4583"
+            "        85.7500       161.0500")
+
+    def test_five_judge_header_is_recognised(self):
+        from scripts.ingest_routines import ColumnMap
+        cmap = ColumnMap.from_header(self.HEADER5)
+        self.assertIsNotNone(cmap)
+        self.assertEqual(cmap.judge_labels(), ["J1", "J2", "J3", "J4", "J5"])
+
+    def test_three_judge_header_is_recognised(self):
+        # The Classic Snohomish sheets have no J4/J5. Requiring five made every one of
+        # their scoring rows unreadable.
+        from scripts.ingest_routines import ColumnMap
+        cmap = ColumnMap.from_header(self.HEADER3)
+        self.assertIsNotNone(cmap)
+        self.assertEqual(cmap.judge_labels(), ["J1", "J2", "J3"])
+
+    def test_duplicate_total_columns_are_numbered_left_to_right(self):
+        # "Total" appears twice: the line total and the cumulative total. Collapsing them
+        # into one column is what made the old parser lose the cumulative column.
+        from scripts.ingest_routines import ColumnMap
+        cmap = ColumnMap.from_header(self.HEADER5)
+        occurrences = [(label, occ) for label, occ, _ in cmap.columns if label == "Total"]
+        self.assertEqual([occ for _, occ in occurrences], [0, 1])
+        cells = cmap.cells(self.ROW5)
+        self.assertEqual(cells[("Total", 0)], [22.4583])
+        self.assertEqual(cells[("Total", 1)], [85.75])
+        self.assertEqual(cells[("Routine", 0)], [161.05])
+        self.assertEqual(cells[("J5", 0)], [5.5])
+        self.assertNotIn(("Ref", 0), cells, "Ref is blank on an ordinary row")
+
+    def test_bracketed_factor_is_not_read_as_a_column_value(self):
+        # "ACRO (0.6)" on a three-judge sheet puts 0.6 under Ref, which made every row
+        # look like a deduction row (dd_nominal 0.6).
+        from scripts.ingest_routines import _mask_bracketed
+        line = "   ACRO (0.6)    2.375 8.00 6.00 7.50 10.2125"
+        masked = _mask_bracketed(line)
+        self.assertEqual(len(masked), len(line))
+        self.assertNotIn("0.6", masked)
+        self.assertIn("2.375", masked)
+
+
+class TrimmedMeanTests(unittest.TestCase):
+    def test_five_judges_drop_high_and_low(self):
+        from scripts.ingest_routines import _trimmed_mean
+        self.assertAlmostEqual(
+            _trimmed_mean([6.50, 6.50, 6.50, 6.25, 5.50]), 6.416667, places=5)
+
+    def test_three_judges_use_the_plain_mean(self):
+        # Nothing to drop with three judges: (8.00 + 6.00 + 7.50)/3 = 7.166667, and
+        # 7.166667 x 2.375 x 0.6 = 10.2125, the printed total.
+        from scripts.ingest_routines import _trimmed_mean
+        self.assertAlmostEqual(_trimmed_mean([8.00, 6.00, 7.50]), 7.166667, places=5)
+        self.assertAlmostEqual(_trimmed_mean([8.00, 6.00, 7.50]) * 2.375 * 0.6,
+                               10.2125, places=3)
+
+    def test_fewer_than_three_judges_is_not_a_mean(self):
+        from scripts.ingest_routines import _trimmed_mean
+        self.assertIsNone(_trimmed_mean([6.0, 7.0]))
+
+
+class StcRowTests(unittest.TestCase):
+    """STC labels and fault counts vary by meet; all variants are in the corpus."""
+
+    def test_three_fault_counts(self):
+        from scripts.ingest_routines import parse_stc_row
+        r = parse_stc_row("  STC Small (0.1)   21   44    7   2.4000   -5.0667")
+        self.assertNotIn("error", r)
+        self.assertEqual(r["fault_counts"], [21, 44, 7])
+        self.assertAlmostEqual(r["computed_total"], 2.4, places=3)
+        self.assertTrue(r["reconciles"])
+        self.assertAlmostEqual(r["penalty"], -5.0667, places=3)
+
+    def test_two_fault_counts_when_one_judge_has_none(self):
+        from scripts.ingest_routines import parse_stc_row
+        r = parse_stc_row("  STC Small (0.1)    9    18   1.3500   -14.3500")
+        self.assertNotIn("error", r)
+        self.assertEqual(r["fault_counts"], [9, 18])
+        self.assertTrue(r["reconciles"])
+
+    def test_major_without_median(self):
+        from scripts.ingest_routines import parse_stc_row
+        r = parse_stc_row("  STC Major (3.0)    0    0    0   0.0000")
+        self.assertNotIn("error", r)
+        self.assertEqual(r["element_type"], "STC Major")
+
+    def test_trailing_dash_means_no_deduction(self):
+        from scripts.ingest_routines import parse_stc_row
+        r = parse_stc_row("  STC Small (0.1)    0    0    0   0.0000    -")
+        self.assertNotIn("error", r)
+        self.assertEqual(r["penalty"], 0.0)
+
+    def test_stc_total_has_no_x3(self):
+        # 2.4000 = mean(21,44,7) x 0.1. Artistic impression has the x3, STC does not.
+        from scripts.ingest_routines import parse_stc_row
+        r = parse_stc_row("  STC Obvious (0.5)   7    0    9   2.6667")
+        self.assertAlmostEqual(r["computed_total"], 2.6667, places=3)
+
+
+class ToleranceTests(unittest.TestCase):
+    def test_rounding_noise_is_tolerated(self):
+        from scripts.ingest_routines import _close
+        # A printed difficulty of 10.02 is itself rounded, so the product lands 0.0067
+        # off on 13.3667 (0.05%). That is rounding, not a different scoring rule.
+        self.assertTrue(_close(13.36, 13.3667))
+
+    def test_a_different_scoring_rule_is_not_tolerated(self):
+        from scripts.ingest_routines import _close
+        # The four-judge panels are off by 0.34%, an order of magnitude above the noise.
+        self.assertFalse(_close(21.2188, 21.2917))
+
+    def test_missing_printed_value_never_reconciles(self):
+        from scripts.ingest_routines import _close
+        self.assertFalse(_close(10.0, None))
+
+
+class StcIsNotAnImportBlockerTests(unittest.TestCase):
+    """A category total that will not reproduce is reported, but never blocks.
+
+    A routine can carry more than one STC panel, so the category totals are not
+    required to sum to the single printed deduction. Blocking on them stopped five
+    sheets that reconcile perfectly on everything that matters.
+    """
+
+    PDF = (ROOT / "swim-meets/2026/20260321_Classic_Snohomish_WA"
+                  "/Age Group 15-17 Women Duet Free Final.pdf")
+
+    def test_category_mismatch_is_a_note(self):
+        from scripts.ingest_routines import extract_text_from_pdf, parse_routine_pdf_text
+        if not self.PDF.exists():
+            self.skipTest("fixture PDF not present")
+        parsed = parse_routine_pdf_text(extract_text_from_pdf(str(self.PDF)))
+        self.assertEqual(parsed["errors"], [], "must not block the import")
+        self.assertEqual(parsed["stats"]["unparsed"], 0)
+        self.assertEqual(parsed["stats"]["unreconciled"], 0)
+        self.assertGreaterEqual(parsed["stats"]["stc_notes"], 1)
+        self.assertTrue(any("STC category total" in w for w in parsed["warnings"]))
+        # The deduction is still stored, and the routine score still reconciles.
+        athlete = parsed["athletes"][0]
+        self.assertIsNotNone(
+            athlete["routine_scores"].get("synchronization_deduction"))
+
+
+class SwimmerLineTests(unittest.TestCase):
+    """The Swimmer column carries names, meet furniture and other rows all together.
+
+    Relaxing the gender prefix so gender-less sheets parse also made every scoring row
+    match the name pattern, so these tests pin down what must NOT become an athlete.
+    """
+
+    def names(self, line):
+        from scripts.ingest_routines import parse_swimmer_line
+        return [e["name"] for e in parse_swimmer_line(line)]
+
+    def test_gender_prefix_is_still_read(self):
+        self.assertEqual(self.names("F CAI Jolene"), ["CAI Jolene"])
+
+    def test_sheet_without_a_gender_column(self):
+        # 'AG 12U Female Solo Details.pdf' prints no gender column at all.
+        self.assertEqual(self.names("GIRE Ellie"), ["GIRE Ellie"])
+
+    def test_reserve_marker_welded_to_the_name(self):
+        from scripts.ingest_routines import parse_swimmer_line
+        self.assertTrue(parse_swimmer_line("[R]LANNING Alexandra J")[0]["is_reserve"])
+        self.assertEqual(self.names("M [R] WU Vivian"), ["WU Vivian"])
+
+    def test_missing_gender_is_not_invented(self):
+        from scripts.ingest_routines import parse_swimmer_line
+        self.assertIsNone(parse_swimmer_line("GIRE Ellie")[0]["gender"])
+
+    def test_duet_splits_on_a_padded_slash(self):
+        self.assertEqual(
+            self.names("LIN Isabella / SIZEMOVA Daria"),
+            ["LIN Isabella", "SIZEMOVA Daria"],
+        )
+
+    def test_unpadded_slash_is_an_age_range_not_a_duet(self):
+        # 'LIN - 18/19 Isabella' is one swimmer in one age group.
+        self.assertEqual(self.names("F LIN - 18/19 Isabella"), ["LIN - 18/19 Isabella"])
+
+    def test_age_group_is_stripped_from_the_person_but_kept_printed(self):
+        from scripts.ingest_routines import parse_swimmer_line
+        entry = parse_swimmer_line("F YANOVSKIS Milana 12u")[0]
+        self.assertEqual(entry["name"], "YANOVSKIS Milana 12u")
+        self.assertEqual(entry["family_name"], "YANOVSKIS")
+        self.assertEqual(entry["given_name"], "Milana")
+
+    def test_age_group_welded_onto_the_surname_with_a_hyphen(self):
+        from scripts.ingest_routines import parse_swimmer_line
+        entry = parse_swimmer_line("KIM-12U Olivia")[0]
+        self.assertEqual(entry["family_name"], "KIM")
+        self.assertEqual(entry["given_name"], "Olivia")
+
+    def test_generational_suffix_is_kept_out_of_the_given_name(self):
+        from scripts.ingest_routines import split_person_name
+        parts = split_person_name("LIN Isabella Jr")
+        self.assertEqual(parts["family_name"], "LIN")
+        self.assertEqual(parts["given_name"], "Isabella")
+        self.assertEqual(parts["suffix"], "JR")
+
+    def test_suffix_never_resolves_to_the_same_person(self):
+        # The corpus has same-club 'LIN Isabella' / 'Jr' / 'Sr'. If any lookup key were
+        # shared, the Jr would resolve to the parent and two swimmers' scores would be
+        # averaged into one person.
+        from scripts.ingest_routines import person_match_keys
+        base = set(person_match_keys("LIN Isabella"))
+        jr = set(person_match_keys("LIN Isabella Jr"))
+        sr = set(person_match_keys("LIN Isabella Sr"))
+        self.assertFalse(base & jr, base & jr)
+        self.assertFalse(base & sr, base & sr)
+        self.assertFalse(jr & sr, jr & sr)
+
+    def test_person_match_keys_are_normalised(self):
+        from scripts.ingest_routines import person_match_keys
+        self.assertIn("lin isabella", person_match_keys("  LIN   Isabella  "))
+        self.assertIn("lin isabella", person_match_keys("Isabella LIN"))
+
+    def test_middle_initial_is_not_mistaken_for_a_given_name(self):
+        from scripts.ingest_routines import split_person_name
+        parts = split_person_name("AKHROMTSEV Michaella J")
+        self.assertEqual(parts["family_name"], "AKHROMTSEV")
+        self.assertEqual(parts["given_name"], "Michaella")
+        self.assertEqual(parts["middle_name"], "J")
+
+    def test_two_word_surname(self):
+        from scripts.ingest_routines import split_person_name
+        parts = split_person_name("ALDANA MARTINEZ Valeria")
+        self.assertEqual(parts["family_name"], "ALDANA MARTINEZ")
+        self.assertEqual(parts["given_name"], "Valeria")
+
+    def test_parenthetical_second_name_is_alt_not_part(self):
+        from scripts.ingest_routines import split_person_name
+        parts = split_person_name("HUANG Rosalyn (xiaoxin)")
+        self.assertEqual(parts["family_name"], "HUANG")
+        self.assertEqual(parts["given_name"], "Rosalyn")
+        self.assertEqual(parts["alt_name"], "xiaoxin")
+
+    # --- rows that must never be read as swimmers ---
+
+    def test_scoring_row_is_not_a_swimmer(self):
+        self.assertEqual(self.names("HYBRID (0.5)   7.000 6.50 6.50 6.50 6.25 5.50 22.4583"), [])
+
+    def test_element_types_outside_the_hardcoded_list_are_still_rejected(self):
+        # ELEMENT_TYPES is only ("ACRO", "HYBRID"), but the corpus also prints
+        # TRE1a / ChoHY / ReqHY. Keying on the difficulty factor catches them all.
+        for row in (
+            "TRE4b (1.0)           2.600 5.25 4.75 6.00 5.00 13.4333",
+            "ChoHY (0.2)           1.000 6.50 6.25 6.75 6.50  1.3000",
+            "ReqHY (0.2)           11.15 5.75 6.50 6.50 6.00 13.9375",
+        ):
+            self.assertEqual(self.names(row), [], row)
+
+    def test_meet_title_is_not_a_swimmer(self):
+        self.assertEqual(
+            self.names("2026 Charlotte Davis Region A Championship"), [])
+
+    def test_venue_and_date_banner_is_not_a_swimmer(self):
+        for row in (
+            "Buffalo. NY 9 APR 2026",
+            "Snohomish Aquatic Center Snohomish, WA 22 MAR 2026",
+            "North Natomas Aquatic Center 2601 New Market Dr., "
+            "Sacramento, CA 95835 7 MAR 2026 - 08:00",
+        ):
+            self.assertEqual(self.names(row), [], row)
+
+    def test_judge_panel_is_not_a_swimmer(self):
+        # Three real names and a digit, so the numeric guards do not catch it.
+        self.assertEqual(
+            self.names("J1  Leslie SIMS      Sharon COPP      Daniela GARMENDIA"), [])
+
+    def test_status_row_is_not_a_swimmer(self):
+        self.assertEqual(self.names("DSQ  23.  (10) OCC - OHIO CORALINAS SYNCHRO"), [])
+        self.assertEqual(self.names("SCR       (11) SAZ - SCOTTSDALE SYNCHRO"), [])
+
+    def test_team_row_is_not_a_swimmer(self):
+        self.assertEqual(self.names("1.   (12) AST - ARMADA ARTISTIC SWIM TEAM"), [])
+
+    def test_column_header_is_not_a_swimmer(self):
+        self.assertEqual(
+            self.names("Swimmer                            Age Group"), [])
+
+    def test_footer_is_not_a_swimmer(self):
+        self.assertEqual(self.names("Signature: ELLA HARRISON"), [])
+        self.assertEqual(self.names("Report Created 3/8/2026 9:12 AM"), [])
+
+
+class ClassificationTests(unittest.TestCase):
+    def test_routine_sheet_is_recognised(self):
+        from scripts.ingest_routines import classify_pdf
+        text = "\n".join([
+            "Code Rank Draw Team             Ref DD    J1   J2   J3   J4   J5"
+            "     Total Pen.    Total        Routine",
+            "     1.   (6)   AST - ARMADA ARTISTIC SWIM TEAM",
+            "          HYBRID (0.5)   7.000 6.50 6.50 6.50 6.25 5.50 22.4583"
+            "   85.7500   161.0500",
+            "    Choreo and Music (1.4)   6.25 6.25 6.25 6.50 5.25 26.2500   75.3000",
+        ])
+        result = classify_pdf(text)
+        self.assertTrue(result["is_routine"], result["reason"])
+        self.assertEqual(result["signals"]["scoring header rows"], 1)
+
+    def test_aggregate_sheet_is_not_routine(self):
+        from scripts.ingest_routines import classify_pdf
+        text = ("1.  (3)  AST - ARMADA ARTISTIC SWIM TEAM   161.0500  85.7500\n"
+                "2.  (1)  SFM - SAN FRANCISCO MERIONETTES  157.2375  84.2375\n")
+        result = classify_pdf(text)
+        self.assertFalse(result["is_routine"])
+        self.assertTrue(result["reason"], "a skip must say why")
+
+    def test_empty_text_is_not_routine(self):
+        from scripts.ingest_routines import classify_pdf
+        self.assertFalse(classify_pdf("")["is_routine"])
+
+
+class ThreeJudgeSheetTests(unittest.TestCase):
+    """The Classic Snohomish sheets: three judges, one header, eight ACRO rows."""
+
+    PDF = (ROOT / "swim-meets/2026/20260321_Classic_Snohomish_WA"
+                  "/Age Group 18-19 Acrobatic Routine Free Final.pdf")
+
+    def setUp(self):
+        if not self.PDF.exists():
+            self.skipTest("fixture PDF not present")
+
+    def test_every_row_reconciles_and_nothing_is_dropped(self):
+        from scripts.ingest_routines import extract_text_from_pdf, parse_routine_pdf_text
+        parsed = parse_routine_pdf_text(extract_text_from_pdf(str(self.PDF)))
+        self.assertEqual(parsed["stats"]["unparsed"], 0, parsed["errors"])
+        self.assertEqual(parsed["stats"]["unreconciled"], 0, parsed["errors"])
+
+    def test_panel_and_routine_totals(self):
+        from scripts.ingest_routines import extract_text_from_pdf, parse_routine_pdf_text
+        parsed = parse_routine_pdf_text(extract_text_from_pdf(str(self.PDF)))
+        athlete = parsed["athletes"][0]
+        self.assertAlmostEqual(athlete["element_total"], 41.9663, places=3)
+        self.assertAlmostEqual(athlete["artisticimpression_total"], 74.0, places=3)
+        # 41.9663 + 74.0000 - 15.9667 = 99.9996
+        self.assertAlmostEqual(athlete["routine_score"], 99.9996, places=3)
+        self.assertIsNone(athlete["synchronization_total"])
+
+
+class RoutineWritePolicyTests(unittest.TestCase):
+    """A disagreement between printed and recomputed totals must stop the write."""
+
+    def _payload(self, errors):
+        return {"athletes": [], "judges": [], "errors": errors, "warnings": [],
+                "stats": {"scoring_rows": 1, "unparsed": 0, "unreconciled": 0},
+                "event": {"event_name": "E", "event_date": "2026-01-01",
+                          "host_city": "C"},
+                "meet": {"name": "M", "meet_date": "2026-01-01"}}
+
+    def test_mismatch_refuses_by_default(self):
+        from scripts.ingest_routines import IngestError, insert_rows_to_supabase
+        errors = [{"kind": "score does not reconcile", "line_no": 5,
+                   "text": "HYBRID (0.5) 7.000 6.50 6.50 6.50 6.25 5.50 22.4583",
+                   "columns": "", "reason": "printed 21.2917 but the judges give 21.2188"}]
+        with patch("scripts.ingest_routines.check_results_present"), \
+             patch("scripts.ingest_routines.get_supabase_config") as cfg:
+            with self.assertRaises(IngestError) as ctx:
+                insert_rows_to_supabase(self._payload(errors), "src.pdf", False)
+        self.assertIn("do not reconcile", str(ctx.exception))
+        cfg.assert_not_called()
+
+    def test_allow_mismatch_gets_past_the_check(self):
+        from scripts.ingest_routines import insert_rows_to_supabase
+        errors = [{"kind": "score does not reconcile", "line_no": 5, "text": "x",
+                   "columns": "", "reason": "because"}]
+        with patch("scripts.ingest_routines.check_results_present"), \
+             patch("scripts.ingest_routines.get_supabase_config",
+                   side_effect=AssertionError("must not be reached")), \
+             patch("scripts.ingest_routines.resolve_event"), \
+             patch("scripts.ingest_routines.resolve_meet"), \
+             patch("scripts.ingest_routines.prepare_meet_for_write",
+                   return_value={"replaced": 0, "deleted": 0}), \
+             patch("scripts.ingest_routines.SupabaseRest"):
+            result = insert_rows_to_supabase(self._payload(errors), "src.pdf",
+                                             True, allow_mismatch=True)
+        self.assertIn("dry run", result)
+
+    def test_dry_run_does_not_need_supabase_credentials(self):
+        from scripts.ingest_routines import insert_rows_to_supabase
+        with patch("scripts.ingest_routines.check_results_present"), \
+             patch("scripts.ingest_routines.get_supabase_config",
+                   side_effect=AssertionError("dry run must not read credentials")), \
+             patch("scripts.ingest_routines.SupabaseRest"):
+            result = insert_rows_to_supabase(self._payload([]), "src.pdf", True)
+        self.assertIn("dry run", result)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,1016 @@
+openapi: 3.1.0
+
+info:
+  title: User Management — Identity, Membership & Org API
+  version: 002.0.0
+  description: |
+    Contract for feature `002-club-user-integration` — **user-management service**
+    (`api/user-management`, FastAPI on `:8001`, prefix `/api/v1`).
+
+    This service is the **sole issuer of identity**. The dashboard never mints a token
+    outside development. Claims are identity only — authorization is resolved per request
+    from `as_club_membership` (`design.md` §4.3).
+
+    **Two status gates, reported separately.**
+    `user_profile.status = 'ACTIVE'` answers *may this person authenticate*;
+    `as_club_membership.status = 'active'` answers *may they act on this club*.
+    Login checks both and never conflates them.
+
+    **Registration is not authentication.** No endpoint returns a token except
+    `POST /auth/login` and `POST /auth/claim-account`.
+
+    The dashboard's public proxies live in a separate contract,
+    [`dashboard-bff.yaml`](./dashboard-bff.yaml), because the two services have different
+    base paths and different trust models.
+
+    ### Vocabulary warning
+
+    Two role enums exist and they differ in casing. Both are reproduced exactly as the
+    schema CHECK constraints define them; do not normalize them into one another:
+
+    | Enum | Values | Table |
+    |---|---|---|
+    | `MembershipRole` | `admin｜coach｜swimmer｜parent｜official` (lower) | `as_club_membership.role` |
+    | `TeamRole` | `COACH｜CAPTAIN｜ATHLETE` (upper) | `as_team_member.team_role` |
+
+    Captain is expressed as `team_role='CAPTAIN'`. There is **no**
+    `as_team_member.title` column, despite `design.md` §6.5 — see data-model.md D3.
+
+    ### Governance basis
+
+    Constitution **v2.0.0** (amended 2026-10-04) governs this contract. P16 permits the
+    dashboard an RLS-scoped authorization mirror of `as_person` / `as_club_membership` /
+    `as_person_link` / `as_team` under four conditions — feed-only population, RLS on every
+    mirror table, per-request resolution, rebuildable from the feed. P7 sanctions GoTrue
+    `sign_in_with_password` alongside OAuth2, with the explicit condition that the user
+    service MUST NOT present it as a general-purpose OAuth2 grant. Credentials, password
+    material and refresh tokens remain prohibited in the dashboard, absolutely.
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8001/api/v1
+    description: Local user-management service
+
+tags:
+  - name: auth
+    description: Registration, login, account enable/disable, password
+  - name: persons
+    description: People, including people with no login
+  - name: members
+    description: Club membership and approval
+  - name: person-links
+    description: Parent / guardian / emergency-contact relationships
+  - name: teams
+    description: Team roster and lead coach
+
+security:
+  - internalSecret: []
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Authenticate and mint a dashboard token
+      description: |
+        Verifies credentials via Supabase Auth (`sign_in_with_password`), then enforces
+        **both** status gates. Mints an RS256 token with `aud` = dashboard `APP_NAME`.
+
+        Forbidden claims are never emitted: no `athlete_ids`, no scalar `club_id`.
+        `club_ids` / `roles_by_club` are cache-only and are never consulted for
+        authorization — a stale `club_ids` yields a wrong switcher option, not
+        over-permission.
+      security: [{ internalSecret: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Authenticated and holding at least one active membership
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: '`INVALID_CREDENTIALS` — wrong password, or `SOFT_DELETED`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: |
+            Authenticated but not permitted. The codes are distinguished because a
+            pending user and a suspended user need different messages.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                pending:
+                  summary: Registered, awaiting club approval
+                  value: { code: PENDING_APPROVAL, message: 'A club admin must approve you first' }
+                suspended:
+                  summary: Disabled by an admin
+                  value: { code: ACCOUNT_SUSPENDED, message: 'This account has been disabled' }
+                noClub:
+                  summary: Valid credentials, but every membership is dormant or left
+                  value: { code: NO_ACTIVE_MEMBERSHIP, message: 'You do not belong to an active club' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: registerMember
+      summary: Request an account at an existing club
+      description: |
+        Creates the auth user (confirmed), `as_person`, `as_person_identity`,
+        `user_profile` at `INVITED`, and exactly one `as_club_membership` at `invited`.
+
+        Returns **no token** — registration is not authentication.
+
+        If `email` matches one of the **9 legacy ingest-created accounts** left over from
+        before OQ #9, the existing person is reused rather than duplicated and the response
+        is `409 SEEDED_ACCOUNT_EXISTS`; see `POST /auth/claim-account`. Ingest no longer
+        creates accounts, so this is a one-time migration path, not a routine outcome
+        (research.md D1).
+      security: [{ internalSecret: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Registered, pending approval
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: '`SEEDED_ACCOUNT_EXISTS` — the caller must confirm before takeover'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/register-club:
+    post:
+      tags: [auth]
+      operationId: registerClub
+      summary: Register a new club (tenant) and its owner
+      description: |
+        Alias of the existing `POST /tenants` onboarding. Creates the tenant plus an owner
+        with `as_club_membership(role='admin', title='Club Owner', status='active')`.
+        The dashboard BFF then mints an owner session so the new admin is logged in.
+      security: [{ internalSecret: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterClubRequest' }
+      responses:
+        '201':
+          description: Club created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/claim-account:
+    post:
+      tags: [auth]
+      operationId: claimAccount
+      summary: Adopt an existing account with an admin-issued claim token
+      description: |
+        **Adoption, not seeded conversion** (OQ #9, ruled 2026-10-04). The subject is an
+        account that already exists in GoTrue — one of the 9 legacy ingest-created rows, or
+        one an admin created out of band. Ingest creates no accounts
+        (`user_mgmt_sync.py` `get_or_create_auth_user` / `DEFAULT_PASSWORD` stay deleted),
+        so this endpoint never depends on a PDF having been parsed.
+
+        The caller presents a **single-use `claim_token` that an admin issued**, bound to one
+        `person_id`. A token cannot be self-minted, which is what makes this a smaller attack
+        surface than the seeded conversion it replaces: no default password is ever issued.
+        Replaying a consumed token returns `409 SEEDED_ACCOUNT_EXISTS` and creates no second
+        `as_person_identity` row.
+
+        For a legacy account still holding its seed-default password, `current_password` is
+        also required so ownership can be proven, and `400 PASSWORD_NOT_CHANGED` is returned
+        when it still equals the seed default **and** matches `new_password`.
+
+        On success `as_person_identity` is created, the stored email is rewritten to the
+        chosen address, and `user_profile.status` moves `INVITED → ACTIVE`. Shares a service
+        function with `POST /persons/{person_id}/invite-account`.
+      security: [{ internalSecret: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClaimAccountRequest' }
+      responses:
+        '200':
+          description: Claimed and activated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400':
+          description: '`PASSWORD_NOT_CHANGED`, or a GoTrue password-policy rejection'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /auth/clubs:
+    get:
+      tags: [auth]
+      operationId: listClubs
+      summary: Public club list for the registration page
+      security: [{ internalSecret: [] }]
+      responses:
+        '200':
+          description: Clubs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ClubRef' }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: Current caller's person, memberships and club scope
+      description: Single source for the profile UI and for the Phase B sync trigger.
+      responses:
+        '200':
+          description: Current identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/me/enable:
+    patch:
+      tags: [auth]
+      operationId: enableSelf
+      summary: Activate an invited or suspended account
+      description: |
+        Requires a verified current password **even when an admin enables a
+        subordinate**.
+
+        Deliberately separate from membership approval: approving a minor's club
+        membership must not hand them a working login, and granting a login must not
+        imply the club accepts the person.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password]
+              properties:
+                current_password: { type: string, format: password }
+      responses:
+        '200':
+          description: Activated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /auth/me/disable:
+    patch:
+      tags: [auth]
+      operationId: disableSelf
+      summary: Suspend the caller's account and revoke all sessions
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Suspended; all live sessions revoked via GoTrue
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/me/password:
+    patch:
+      tags: [auth]
+      operationId: changePassword
+      summary: Change the caller's password
+      description: |
+        Re-authenticates with `current_password` first — a stolen refresh token must not
+        be sufficient to set a new password.
+
+        Revokes all other sessions and keeps the caller's. GoTrue policy rejections
+        (length, similarity to email, reuse) propagate unchanged.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string, format: password }
+                new_password: { type: string, format: password, minLength: 8 }
+      responses:
+        '200': { description: Password changed }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /persons:
+    post:
+      tags: [persons]
+      operationId: createPerson
+      summary: Create a person with **no login**
+      description: |
+        The endpoint that makes minors, dormant swimmers and alumni first-class. Creates
+        `as_person` + `as_club_membership` only — **no `auth.users`, no `user_profile`,
+        no `as_person_identity`, no credentials of any kind.**
+
+        Requires an `admin` membership in the target club, enforced by the service's own
+        RLS rather than by a token claim.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePersonRequest' }
+      responses:
+        '201':
+          description: Person created; no account exists
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Person' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /persons/{person_id}/invite-account:
+    post:
+      tags: [persons]
+      operationId: inviteAccount
+      summary: Give an existing person an account
+      description: |
+        Creates `auth.users` + `as_person_identity` + `user_profile` at `INVITED`.
+
+        This grants an account, **not** access: the person still cannot sign in until
+        enabled. Shares a service function with `POST /auth/claim-account`.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/PersonId' }]
+      responses:
+        '201':
+          description: Account created, pending activation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Person' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /members:
+    get:
+      tags: [members]
+      operationId: listMembers
+      summary: Membership list — the approval queue is `status=invited`
+      description: |
+        Keyed on `person_id`, **not** `user_id`: a member may have no account at all.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MembershipStatus' }
+        - name: role
+          in: query
+          schema: { $ref: '#/components/schemas/MembershipRole' }
+        - name: club_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Memberships
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Membership' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /members/{person_id}/approve:
+    post:
+      tags: [members]
+      operationId: approveMembership
+      summary: Approve a membership
+      description: |
+        Sets `as_club_membership.status = 'active'` plus `approved_by` / `approved_at`,
+        and writes an `audit_log` row.
+
+        Approves a **membership**, never a login. Does **not** change
+        `user_profile.status` — that is `PATCH /auth/me/enable`.
+
+        Attribution requires `approved_by` / `approved_at`, which do not yet exist on the
+        table; they are added by `05_org_model.sql` (data-model.md D1).
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/PersonId' }]
+      responses:
+        '200':
+          description: Membership active
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Membership' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Already `active`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /members/{person_id}/reject:
+    post:
+      tags: [members]
+      operationId: rejectMembership
+      summary: Reject a pending membership
+      description: |
+        Sets status to `left`. If the person has an identity, the auth user is suspended
+        as well, so a rejected account cannot linger as usable.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/PersonId' }]
+      responses:
+        '200':
+          description: Membership rejected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Membership' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /members/{person_id}:
+    delete:
+      tags: [members]
+      operationId: removeMembership
+      summary: End a membership
+      description: |
+        Sets `status='left'` and `left_at`.
+
+        Effective on the caller's **next request**, with no re-login, because the token
+        carries no club scope — this is the behaviour SC-004 asserts.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/PersonId' }]
+      responses:
+        '204': { description: Membership ended }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /members/{person_id}/roles:
+    post:
+      tags: [members]
+      operationId: setMemberRoles
+      summary: Grant or revoke a role, and set display title separately
+      description: |
+        `title` (`Club Owner`, `Lead Coach`) is display data and grants **nothing**. It is
+        set through this same endpoint so that granting a role and granting a title are
+        never confused for one another.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/PersonId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grant]
+              properties:
+                grant:
+                  type: array
+                  items: { $ref: '#/components/schemas/MembershipRole' }
+                revoke:
+                  type: array
+                  items: { $ref: '#/components/schemas/MembershipRole' }
+                title: { type: [string, 'null'], maxLength: 100 }
+      responses:
+        '200':
+          description: Roles updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Membership' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /person-links:
+    get:
+      tags: [person-links]
+      operationId: listPersonLinks
+      summary: List family links visible to the caller
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: club_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: parent_person_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: child_person_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Links
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PersonLink' }
+    post:
+      tags: [person-links]
+      operationId: createPersonLink
+      summary: Link a parent to a child who may have no account
+      description: |
+        The link is **club-scoped**: a parent linked at club A sees nothing at club B.
+
+        Revocation takes effect on the next request without a re-login.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePersonLinkRequest' }
+      responses:
+        '201':
+          description: Link created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PersonLink' }
+        '400':
+          description: Includes the `parent <> child` constraint violation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /person-links/{link_id}:
+    delete:
+      tags: [person-links]
+      operationId: deletePersonLink
+      summary: Revoke a family link
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: link_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Link revoked }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /teams:
+    get:
+      tags: [teams]
+      operationId: listTeams
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: club_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Team' }
+    post:
+      tags: [teams]
+      operationId: createTeam
+      summary: Create a team, optionally naming a lead coach
+      description: |
+        `lead_coach_person_id` may reference a person with **no account** — a coach is a
+        person, not a login. (Column name verified against the live schema; `design.md`
+        §5.1 says `lead_coach_id`, which does not exist.) Setting it does **not** grant that
+        person access to the team: authorization is `app_has_club_role(club, ['coach'])`, and
+        `app_is_team_lead()` is not built in this feature (OQ #2).
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTeamRequest' }
+      responses:
+        '201':
+          description: Team created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Team' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /teams/{team_id}:
+    patch:
+      tags: [teams]
+      operationId: updateTeam
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 200 }
+                lead_coach_person_id: { type: [string, 'null'], format: uuid }
+      responses:
+        '200':
+          description: Team updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Team' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /teams/{team_id}/members:
+    post:
+      tags: [teams]
+      operationId: addTeamMember
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [person_id, team_role]
+              properties:
+                person_id: { type: string, format: uuid }
+                team_role: { $ref: '#/components/schemas/TeamRole' }
+      responses:
+        '201': { description: Member added }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 'Already on the team — `UNIQUE (team_id, person_id)`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /teams/{team_id}/members/{person_id}:
+    delete:
+      tags: [teams]
+      operationId: removeTeamMember
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: person_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Member removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    internalSecret:
+      type: apiKey
+      in: header
+      name: X-Internal-Secret
+      description: Service-to-service secret. Never exposed to the browser.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: RS256 dashboard token. `sub` is the only claim RLS trusts.
+
+  parameters:
+    PersonId:
+      name: person_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: A person — never a `user_id`. Members may have no account.
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+
+    LoginResponse:
+      type: object
+      required: [access_token, token_type, expires_in, person]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, description: Seconds until `exp`. }
+        person: { $ref: '#/components/schemas/Person' }
+        club_ids:
+          type: array
+          items: { type: string, format: uuid }
+          description: Cache only — the club switcher. Never an authorization input.
+        roles_by_club:
+          type: object
+          additionalProperties:
+            type: array
+            items: { $ref: '#/components/schemas/MembershipRole' }
+          description: Cache only — UI route matching.
+        team_ids:
+          type: array
+          items: { type: string, format: uuid }
+          description: Analytics convenience only.
+        permissions:
+          type: array
+          items: { type: string }
+          description: Retained for compatibility; the dashboard does not enforce from it.
+
+    RegisterRequest:
+      type: object
+      required: [email, password, first_name, last_name, club_id, role]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 8 }
+        first_name: { type: string }
+        last_name: { type: string }
+        club_id: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/MembershipRole' }
+        birth_date:
+          type: [string, 'null']
+          format: date
+          description: Optional; stored on the **person**, not on a club-scoped profile.
+      description: '`role=admin` is rejected — an admin membership is granted in-club only.'
+
+    RegisterResponse:
+      type: object
+      required: [person_id, status]
+      properties:
+        person_id: { type: string, format: uuid }
+        status: { type: string, const: invited }
+
+    RegisterClubRequest:
+      type: object
+      required: [name, owner_email, owner_password]
+      properties:
+        name: { type: string, maxLength: 200 }
+        code:
+          type: string
+          maxLength: 50
+          description: |
+            Unique, and used **only** as the one-time backfill key for
+            `as_club.tenant_id`. Since OQ #8 the tenancy link is a first-class
+            `tenant_id UUID NOT NULL REFERENCES tenant(id)` FK on `as_club`, not this
+            string (research.md D5, REQ-011). A rename no longer breaks tenancy.
+        city: { type: [string, 'null'] }
+        owner_email: { type: string, format: email }
+        owner_password: { type: string, format: password, minLength: 8 }
+        owner_first_name: { type: string }
+        owner_last_name: { type: string }
+
+    ClaimAccountRequest:
+      type: object
+      required: [claim_token, email, new_password]
+      properties:
+        claim_token:
+          type: string
+          description: |
+            Single-use, issued by an admin and bound to exactly one `person_id`. A caller
+            cannot mint one. Replay → `409 SEEDED_ACCOUNT_EXISTS` (OQ #9).
+        email: { type: string, format: email }
+        new_password: { type: string, format: password, minLength: 8 }
+        current_password:
+          type: string
+          format: password
+          description: |
+            Required **only** for a legacy account whose password is still the seed default,
+            so ownership can be proven. `400 PASSWORD_NOT_CHANGED` when it still equals the
+            seed default and matches `new_password`. Omit for an account with no usable
+            password.
+        first_name: { type: string }
+        last_name: { type: string }
+
+    Person:
+      type: object
+      required: [person_id]
+      properties:
+        person_id: { type: string, format: uuid }
+        given_name: { type: [string, 'null'] }
+        middle_name: { type: [string, 'null'] }
+        family_name: { type: [string, 'null'] }
+        birth_date: { type: [string, 'null'], format: date }
+        has_account:
+          type: boolean
+          description: False for a person created via `POST /persons`. Never ask such a person for a password.
+        status: { $ref: '#/components/schemas/UserProfileStatus' }
+
+    CreatePersonRequest:
+      type: object
+      required: [given_name, club_id, role]
+      properties:
+        given_name: { type: string }
+        family_name: { type: [string, 'null'] }
+        middle_name: { type: [string, 'null'] }
+        birth_date:
+          type: [string, 'null']
+          format: date
+          description: A minor has no self-declared value; an empty value must not block the membership.
+        club_id: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/MembershipRole' }
+        status: { $ref: '#/components/schemas/MembershipStatus' }
+
+    Membership:
+      type: object
+      required: [person_id, club_id, role, status]
+      properties:
+        person_id: { type: string, format: uuid }
+        club_id: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/MembershipRole' }
+        status: { $ref: '#/components/schemas/MembershipStatus' }
+        title:
+          type: [string, 'null']
+          description: Display only — `Club Owner`, `Lead Coach`. Grants nothing.
+        joined_at: { type: [string, 'null'], format: date }
+        left_at: { type: [string, 'null'], format: date }
+        approved_by: { type: [string, 'null'], format: uuid }
+        approved_at: { type: [string, 'null'], format: date-time }
+        person: { $ref: '#/components/schemas/Person' }
+
+    MembershipRole:
+      type: string
+      enum: [admin, coach, swimmer, parent, official]
+      description: Lowercase — matches the `as_club_membership.role` CHECK constraint.
+
+    MembershipStatus:
+      type: string
+      enum: [invited, active, dormant, left]
+
+    UserProfileStatus:
+      type: string
+      enum: [INVITED, ACTIVE, SUSPENDED, SOFT_DELETED]
+      description: |
+        Uppercase — matches the `user_profile.status` CHECK constraint and deliberately
+        distinct from `MembershipStatus`. Login reports the two gates separately.
+
+    TeamRole:
+      type: string
+      enum: [COACH, CAPTAIN, ATHLETE]
+      description: |
+        **Uppercase** — matches the `as_team_member.team_role` CHECK constraint and
+        deliberately distinct from the lowercase `MembershipRole`. Captain is expressed
+        here; the `as_team_member.title` column referenced by `design.md` §6.5 does not exist.
+
+    PersonLink:
+      type: object
+      required: [parent_person_id, child_person_id, club_id, kind]
+      properties:
+        id: { type: string, format: uuid }
+        parent_person_id: { type: string, format: uuid }
+        child_person_id: { type: string, format: uuid }
+        club_id: { type: string, format: uuid }
+        kind: { type: string, enum: [parent, guardian, emergency_contact] }
+
+    CreatePersonLinkRequest:
+      type: object
+      required: [parent_person_id, child_person_id, club_id, kind]
+      properties:
+        parent_person_id: { type: string, format: uuid }
+        child_person_id: { type: string, format: uuid }
+        club_id: { type: string, format: uuid }
+        kind: { type: string, enum: [parent, guardian, emergency_contact] }
+
+    Team:
+      type: object
+      required: [id, club_id, name]
+      properties:
+        id: { type: string, format: uuid }
+        club_id: { type: string, format: uuid }
+        name: { type: string }
+        lead_coach_person_id:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            May reference a person with no account. **Grants no permission** — coach
+            authorization in this feature is club-wide, via
+            `app_has_club_role(club, ['coach'])`; `app_is_team_lead()` is deliberately not
+            built (OQ #2, ruled 2026-10-04). Maintained as data for display and
+            athlete-team analytics only.
+
+    CreateTeamRequest:
+      type: object
+      required: [club_id, name]
+      properties:
+        club_id: { type: string, format: uuid }
+        name: { type: string, maxLength: 200 }
+        lead_coach_person_id:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            Optional, and MAY reference a person with no account (REQ-003). Display data
+            only — it grants no permission (OQ #2, club-wide coach scope).
+
+    ClubRef:
+      type: object
+      required: [id, name, tenant_id]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: string }
+        city: { type: [string, 'null'] }
+        tenant_id:
+          type: string
+          format: uuid
+          description: |
+            The club's owning tenant (REQ-011, OQ #8). Present so the dashboard BFF can
+            derive `X-Tenant-Id` from a club the caller actually belongs to, instead of
+            comparing `as_club.code` to `tenant.code` by string.
+
+    Tenant:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string, enum: [ACTIVE, SUSPENDED] }
+
+    Me:
+      type: object
+      required: [person, memberships]
+      properties:
+        person: { $ref: '#/components/schemas/Person' }
+        status: { $ref: '#/components/schemas/UserProfileStatus' }
+        club_ids:
+          type: array
+          items: { type: string, format: uuid }
+        roles_by_club:
+          type: object
+          additionalProperties:
+            type: array
+            items: { $ref: '#/components/schemas/MembershipRole' }
+        memberships:
+          type: array
+          items: { $ref: '#/components/schemas/Membership' }
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: |
+            Stable machine-readable code. Documented values: `INVALID_CREDENTIALS`,
+            `PENDING_APPROVAL`, `ACCOUNT_SUSPENDED`, `NO_ACTIVE_MEMBERSHIP`,
+            `PASSWORD_NOT_CHANGED`, `SEEDED_ACCOUNT_EXISTS`.
+        message:
+          type: string
+          description: Human-readable and safe to render in the UI.
+        trace_id:
+          type: [string, 'null']
+          description: Correlation ID (constitution principle 10).
+
+  responses:
+    BadRequest:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: '`INVALID_CREDENTIALS`'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Authenticated but not permitted — not an `admin` in the target club
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such person / link / team
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Too many attempts
+      headers:
+        Retry-After: { schema: { type: integer } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

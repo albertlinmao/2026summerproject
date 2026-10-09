@@ -10,8 +10,1443 @@
 ```
 
 </details>
+
+<details>
+<summary><h2>2026-10-07 Implementation phase 1</h2></summary>
+
+follow the same style and format to capture the phase 1 implementation detail to session
+2026-10-07 Implementation phase 1 in Logs to build dashboard.md MD file
+
+```	text
+READ FIRST (scope of this pass)
+tasks.md Phase 1 (T001-T008, all [X]) with Phase 2 read for contrast only; plan.md Constitution
+Check, Gate verdict and Complexity Tracking; constitution.md amendment notes; both contracts'
+info blocks; the headers of 05_org_model.sql and 06_membership_multi_role.sql; the heads of
+api/user-management/backend/src/models/errors.py and services/audit.py; git diff of every
+phase-1 file; file mtimes, used to settle which session wrote what; and the live DB
+(as_club.tenant_id, membership indexes). Evidence was re-run on 2026-10-08 against the working
+tree - the work itself dates 2026-10-07 19:20-20:25 by mtime. Phase 2's own record (the
+49-test migration replay, the 104-pass user-service suite) is not repeated here.
+
+HEADLINE
+Phase 1 is complete and every claim in it reproduces today: 17/17 tests pass, the contract
+validator exits 0 on both documents with openapi-spec-validator OK, tenant_id is 7/7 with
+zero NULLs, and the multi-role membership constraint is live. One real defect was found and
+fixed while writing this record (D1 below) - without the fix the T003 CI job fails on main,
+so the originally reported "exit 0" was not reproducible as written. Nothing is committed,
+per standing rule; everything sits in the working tree.
+
+WHAT LANDED, TASK BY TASK
+
+  T001 - backend/requirements.txt gains pytest>=8.3.3, pytest-cov>=4.1.0, httpx>=0.27.2.
+    The dashboard declared no local runner, so principle 3's "recorded run" could not be
+    produced from requirements.txt. Note the split: CI installs requirements-dev.txt,
+    which already had pytest>=7.4.0 - T001 fixes the LOCAL story, not CI.
+
+  T002 - backend/src/core/config.py gains DEMO_AUTH_ENABLED: bool = False with a comment
+    that demo endpoints need BOTH flags (research D4); root .env gains APP_ENV=development
+    and DEMO_AUTH_ENABLED=false under a "# demo endpoints need BOTH flags" comment. The
+    default is off, so the dev branch is not live merely because APP_ENV defaults to
+    development.
+
+  T003 - new scripts/validate_contracts.py plus a new contract-validation job in
+    .github/workflows/ci.yml, wired into build-and-deploy.needs so a broken spec blocks
+    the deploy (P12: no API spec -> no merge). The validator does strict YAML with
+    duplicate mapping keys as an error (the failure mode a merged document creates),
+    required structure, at least one response per operation, local-only  that must
+    resolve in the same document, then full openapi-spec-validator schema validation when
+    that package is importable. The two contracts are validated as two documents on
+    purpose - merging them silently collapses duplicate path keys.
+
+  T004 - new api/user-management/backend/src/models/errors.py: ErrorCode enum fixed to
+    contracts' Error schema (INVALID_CREDENTIALS, PENDING_APPROVAL, ACCOUNT_SUSPENDED,
+    NO_ACTIVE_MEMBERSHIP, PASSWORD_NOT_CHANGED, SEEDED_ACCOUNT_EXISTS), an ERROR_STATUS
+    map from code to HTTP status, and Optional[str] trace_id that the handler attaches
+    from request.state. The 403s are deliberately distinct codes: a pending user and a
+    wrong password must never read the same to the UI.
+
+  T005 - new api/user-management/backend/src/services/audit.py: the FR-012 audit_log
+    writer. CREDENTIAL_KEY_MARKERS covers password, passwd, secret, token, psk,
+    credential, authorization, api_key, private_key, cookie, session_key - any matching
+    key is rewritten to "[REDACTED]" before the row is written, so no credential value
+    can reach an audit row (SC-006).
+
+  T006 - 05_org_model.sql Stage 1: as_club.tenant_id UUID REFERENCES tenant(id),
+    backfilled, then SET NOT NULL only after the count(*) WHERE tenant_id IS NULL = 0
+    assertion. DEVIATION, recorded deliberately in the migration header AND as a
+    blockquote in data-model.md: data-model.md's WHERE tenant.code = as_club.code
+    cannot run as written, because live public.tenant is (id, name, status, created_at,
+    updated_at) - it has no code column. The real correspondence is identity,
+    as_club.id = tenant.id for all 7 rows, so the backfill keys on id first with exact
+    name equality as fallback, and never invents a tenancy relationship. Live check
+    2026-10-08: 7 rows, 0 NULL.
+
+  T007 - a confirmation, not an edit. constitution.md v2.0.0 (Last Amended 2026-10-04)
+    already carries the P7 and P16 amendment rationales, and plan.md - mtime 2026-10-04,
+    untouched by Phase 1 - already holds the PASS gate verdict plus two Complexity
+    Tracking rows each ending "RESOLVED 2026-10-04: ratified as a constitution
+    amendment". Re-grep of the specs tree for CONDITIONAL PASS / open-conflict language
+    returns exactly two hits: plan.md:56, which says the two conflicts "were escalated to
+    the owner and ratified as amendments", and the T007 task line itself. No downstream
+    artifact still describes P16 or P7 as an unresolved conflict.
+
+  T008 - new 06_membership_multi_role.sql: drops UNIQUE (tenant_id, user_id) on
+    membership and adds UNIQUE (tenant_id, user_id, role_id). The old constraint is
+    found by column set, not by name, and the new one is added only if absent, so the
+    file is idempotent. Separate from 05 because it alters a table 05 does not create -
+    membership comes from 01_initial_schema.sql. It buys multi-role only: membership.user_id
+    stays NOT NULL, so person-without-login remains unrepresentable here and stays REQ-001's
+    job on the as_* tables (REQ-012 records both halves). Live check: index
+    membership_tenant_user_role_key UNIQUE (tenant_id, user_id, role_id) is present.
+
+IGNORE-FILE FIXES - same phase, mtimes 20:02-20:03
+
+  root .gitignore dropped the "# Docker" / ".dockerignore" entry - that line was
+    ignoring the ignore files themselves, which is why frontend/.dockerignore had never
+    been visible to git - and added *.tmp.
+
+  new frontend/.dockerignore, mirroring backend's: node_modules, dist, build, .angular,
+    coverage, *.log and .env* stay out of the image.
+
+  new supabase/terraform/.terraformignore: .terraform/, *.tfstate, *.tfvars, crash logs,
+    override files, .git/.
+
+  frontend/eslint.config.cjs ignores gained node_modules, build, *.min.js, *.min.css -
+    the lint pass was chewing through minified vendor output.
+
+  disclosed: backend/.dockerignore is also untracked, but its mtime is 2026-08-19. It
+    predates Phase 1 and is not claimed here.
+
+D1 HIGH - the T003 job as written does not pass, found 2026-10-08, fixed in this pass
+  Both contracts declare openapi: 3.1.0 and had license: Proprietary as a STRING. OAS
+  3.1 requires the license field to be an object, so openapi-spec-validator 0.9.0 - which
+  is what the CI step's unpinned pip install pyyaml openapi-spec-validator resolves to -
+  rejects both documents with "'Proprietary' is not of type 'object'", reporting
+  "2 problem(s) in 2 contract(s)" and exit 1. The Phase 1 report's "validator exit 0" did
+  not reproduce under the CI install line. Fixed by writing license: {name: Proprietary}
+  in openapi.yaml and dashboard-bff.yaml; re-run now reports openapi-spec-validator: OK
+  for both, exit 0. The install stays unpinned - recorded so a future major bump that
+  breaks the job is recognised as the same class of failure, not a regression in the
+  contracts.
+
+CHECKS THAT CAME BACK CLEAN - re-run 2026-10-08, do not re-run expecting a different answer
+  uv run --no-project --with-requirements backend/requirements.txt python -m pytest
+  tests/test_auth_provisioning.py -q -p no:cacheprovider -> 17 passed in 0.51s. This is
+  the "17 dashboard tests" figure: GoTrue provisioning behaviour against a fake admin
+  endpoint, no live database. The file's mtime is 2026-10-03 11:41, so Phase 1 RAN it
+  and did not write it.
+
+  python scripts/validate_contracts.py with pyyaml + openapi-spec-validator 0.9.0 ->
+  openapi.yaml 22 paths / 24 operations, dashboard-bff.yaml 4 / 4, duplicate keys 0,
+  dangling  0, openapi-spec-validator OK on both, exit 0.
+
+  live: as_club 7 rows with tenant_id IS NULL = 0; membership carries UNIQUE
+  (tenant_id, user_id, role_id) as membership_tenant_user_role_key.
+
+  specs re-grep for unresolved-conflict language: two hits, both benign (T007 above).
+
+DISCLOSURES
+  D1 is a Phase 1 defect found while writing this record, not a new feature; the fix is
+  four lines across two contract files and nothing else moved.
+
+  tests/test_auth_provisioning.py (+52/-1) and tests/test_ingest*.py carry uncommitted
+  changes from the 2026-10-03 ingest/identity sessions - mtimes 2026-10-03 11:06-11:43.
+  Phase 1 did not touch the root test suite; it ran one file of it.
+
+  AGENTS.md's single-line diff is the SPECKIT pointer repoint 001 -> 002 from spec
+  creation, not Phase 1.
+
+  pytest run inside ./backend still collects 0 tests and exits 5: backend/tests holds
+  conftest.py plus empty contract/, integration/ and load/ directories, so CI's Backend
+  Tests job is red independently of anything Phase 1 did (it installs
+  requirements-dev.txt, which already had pytest - T001 neither caused nor fixed this).
+  T001 pins a runner; it does not supply the dashboard's own tests, which arrive with
+  Phase 3+. Recorded so T001 is never mistaken for coverage.
+
+  Nothing committed - standing rule. That includes the submodule's untracked
+  errors.py and audit.py.
+
+HANDOFF
+  Phase 2 (T009-T019) is reported separately: 49-test replay of migrations 01..06, the
+  full 05_org_model.sql apply, T015 RS256 signer + JWKS, T016 club_service.register_club,
+  T017 require_club_role.
+
+  USER_SERVICE_JWKS_URL stays UNSET on purpose until Phase 9: the dashboard demo mint at
+  backend/src/api/auth.py:104 is still HS256, and pointing at the JWKS endpoint earlier
+  kills the demo login.
+
+  T004 and T005 are library files with no importers yet - membership approval (T025) is
+  what pulls in the audit writer, and login's gate errors are what pull in ErrorCode.
+
+  Next in tasks.md: Phase 3, US1 approval flow, T020-T029.
+```
+
+</details>
+
+<details>
+<summary><h2>2026-10-04 002-club-user-integration analyze 2nd</h2></summary>
+
+follow the same style and format to capture the spec analyze execution summary to session
+`2026-10-04 002-club-user-integration analyze 2nd` in `Logs to build dashboard.md` MD file
+
+```text
+READ FIRST (scope of this pass)
+spec.md, plan.md and tasks.md for 002-club-user-integration, plus .specify/memory/
+constitution.md verbatim for the MUST clauses. Supporting evidence was read wherever a claim
+was checkable against the repo instead of arguable: research.md, data-model.md, design.md,
+quickstart.md, both contracts, .github/workflows/ci.yml, backend/requirements-dev.txt,
+backend/requirements.txt, api/user-management/supabase/migrations/01_initial_schema.sql.
+The live DB was NOT re-queried; schema facts are the ones data-model.md recorded from
+information_schema on 2026-10-03, plus the 7/7 tenant-code match already verified.
+
+STRICTLY READ-ONLY, AND THAT CONSTRAINT WAS HONOURED - WITH THE ONE WRITE DISCLOSED
+No spec, plan, task, contract, constitution or config file was modified. The probe script was
+written outside the repo, into the temp directory, so that "read-only" would not be satisfied
+by a technicality. The only write in this feature is this log block, which was requested
+separately from the analyze command and is named here rather than folded in silently.
+
+HEADLINE
+The artifacts are mechanically clean and four constitution principles conflict anyway. The
+v2.0.0 amendment did not just close K1/K2 - it changed the severity of the coverage gaps.
+This command's own rule is that a constitution conflict is automatically CRITICAL, and the
+previous pass rated G1-G4 MEDIUM under that same rule. That rating was wrong. Four CRITICAL
+is the honest count, three of them are the same unrecorded gaps carried forward, and this is
+the second consecutive analyze to report them and the second to leave them unrecorded.
+
+TWO OF PASS 1's CONCLUSIONS ARE WRONG, AND ONE OF THEM CHANGED A FINDING'S SHAPE
+Pass 1's G1 said "NO task gates a merge on test results, so one of the three gates is simply
+absent", and the block below closed by saying the G1-G4 tasks "only matter once there is a
+merge gate to run them in - G1 says there is not one yet". There is one.
+.github/workflows/ci.yml:179 makes build-and-deploy depend on backend-lint, backend-test,
+frontend-lint, frontend-test and frontend-a11y. It predates this feature and neither pass
+opened the file. Had I trusted the previous block instead of reading the workflow, I would
+have filed a fabricated CRITICAL against a gate that exists.
+
+The narrower finding is worse than the fabricated one. CI runs with working-directory ./backend
+and ./frontend only. Distributing the 106 tasks by target - user service 57, dashboard
+backend 19, frontend 9, ingest and repo tests 4, docs and other 17 - only 28 tasks (26%) land
+where a CI job looks. 57 tasks (54%) land in api/user-management, which has no job at all. So
+"No tests -> No Merge" is enforced completely for a quarter of this feature and not at all for
+the other half. That is D2, and it is the highest-leverage thing in this report.
+
+CHECKS THAT CAME BACK CLEAN - do not re-run these expecting different answers
+  106 tasks: no duplicate IDs, monotonic T001..T106, no gaps, 56 marked [P].
+  32 requirements, every one cited by at least one task - 100%, zero orphans. Pass 1 counted
+    30; REQ-011 and REQ-012 arrived with the OQ #8 and OQ #1 rulings, so the coverage
+    denominator moved and 100% still holds against the new one.
+  74 of 106 tasks carry no REQ/FR/SC id inline. Pass 1 did not report this metric at all, and
+    it is the metric that explains D1-D4 below.
+  103 of 106 tasks name a concrete file; T066, T078 and T084 name none, against tasks.md:419 -
+    "Every task names a file. If a task cannot name one, it is not ready to be a task." Note
+    the inversion since last pass: the single exception then was T008, which pointed at a
+    file in another repository. The conflicts pass moved it in-repo and fixed it, and three
+    unfixed exceptions took its place. The count going 1 -> 3 is not progress.
+  Zero placeholders (TODO/TKTK/FIXME/XXX/???/TBD). Zero vague adjectives in any FR or SC.
+  No endpoint is claimed by two different FRs.
+  Both contracts still parse: 22 paths / 24 ops / 21 schemas and 4 / 4 / 8, no duplicate keys,
+    38 $refs resolving. Untouched by the last pass; re-checked only because a count is cheap
+    and a regression here would be silent.
+  research.md D8's central claim is now VERIFIED against the repo rather than repeated:
+    01_initial_schema.sql:59 carries UNIQUE (tenant_id, user_id) on membership. That single
+    line is the entire justification for T008 landing in this tree rather than upstream, and
+    therefore for the entire Phase 0 unblock. It holds.
+
+D1 CRITICAL - the amendment turned a scope choice into a MUST violation
+constitution.md P3 v2.0.0 now states that all four suites are normative and that omitting one
+is "a violation, not a scope choice". tasks.md defines contract, integration and e2e suites
+and nothing for either state machine - user_profile.status and as_club_membership.status,
+which are precisely the business logic P3 names. The previous block called this G4 and rated
+it MEDIUM, and then proposed to add it as a cheap task. Under this command's severity rule
+and under the amendment's own wording it is CRITICAL, and it is not a scope decision anyone
+on this project can make quietly. Worth noting the pattern is not missing: the user service
+already has a 15-file unit suite at api/user-management/backend/tests/unit/, so the practice
+exists and simply was not extended. That makes this an omission, not a gap.
+
+D2 CRITICAL - see above. No CI job exists for api/user-management, where 54% of the tasks land.
+
+D3 CRITICAL - P9 states two SLAs and only one is covered
+plan.md:70 marks Performance "At risk" on the grounds that "Login gains a cross-service hop.
+Needs a measured budget, not an assumption." That reasoning covers the API budget only. P9's
+MUST also states the dashboard render must stay under 2s, and no task measures it - the only
+task containing the word "render" is T089, which is about a pending-state page. A performance
+principle with two numbers and one owner is half a principle.
+
+D4 CRITICAL - P10 states four obligations and two are uncovered
+FR-012 and T005 deliver the audit_log writer, so the log half of P10 is real. Metrics and
+tracing are not, and plan.md:71 says so plainly: "Structured JSON logging + correlation IDs
+are not yet present in the dashboard backend". Nothing in the 106 tasks mentions a metric, a
+trace, or OpenTelemetry. This was G3 at MEDIUM and is CRITICAL by the same rule as D1.
+
+F1 HIGH - Phase 1 edits a file Phase 2 creates
+T006 is in Phase 1, carries no dependencies, and plan.md's phase table marks Phase 1 "no
+dependencies - start immediately". It adds tenant_id to as_club in 05_org_model.sql. T010, in
+Phase 2, is what creates 05_org_model.sql. Eight further tasks (T009-T014, T018, T019) touch
+that same file and are correctly placed in Phase 2. T006 is the only broken one, and it is
+broken in the phase that is supposed to be safe to start. data-model.md's four-step procedure
+also does two different things - DDL inside the migration, and a live backfill of the 7 rows
+via ORG_MODEL_DDL - compressed into one task.
+
+F2 HIGH - a task built on a premise that is false in the repo
+T001 and plan.md:41 both state the dashboard declares no test runner, so principle 3 cannot be
+verified. backend/requirements-dev.txt:2 pins pytest>=7.4.0, pytest-cov>=4.1.0 and
+httpx>=0.25.0, and ci.yml:92 runs pytest --cov=src against it. A runner is declared, pinned
+and executed. T001 then adds pytest-cov to requirements.txt, which is production dependencies,
+when requirements-dev.txt is the file that already carries it. The task would add a duplicate
+pin in the wrong file on the strength of a claim that is checkable in one read.
+
+F3 HIGH and F4 HIGH - carried, unfixed, and both are now two passes old
+F3: spec.md:190 still says "The single writer of user_profile.status = 'ACTIVE'". research.md
+D2, plan.md Phase 0 item 2, T040 (PATCH /auth/me/enable) and T071 (claim_token consume) all
+describe two audited writers with an ordering rule. The spec is alone against four artifacts.
+F4: REQ-009 still reads "verify_jwt MUST be removed or collapsed onto core/auth.get_current_user"
+- a disjunction - while T077 is written as "**Remove** verify_jwt", removal only. Nothing
+decides which branch is intended, so nothing can tell whether T077 satisfies REQ-009.
+
+F5 HIGH - the loose end from the last block, now closed
+The previous block recorded, without resolving, that design.md 4.2 declares as_team.club_id as
+"uuid not null references tenant(id)" while as_club_membership.club_id references as_club, and
+said resolving it "needs a schema read I did not do this pass". The read is done:
+design.md:275 confirms as_team.club_id -> tenant(id), and the same file models as_club as the
+club entity while FR-003 and SC-008 scope teams to a club. One of the two is wrong. This is
+not any of the six items from the conflicts pass, so it was left there, and it stays
+unremediated - but it is now a classified HIGH rather than an open question, and it matters
+more than it looks, because plan.md's precedence rule makes design.md win for technical
+decisions. The normative artifact contradicts FR-003.
+
+F7 MEDIUM and F8 MEDIUM - plan.md contradicts itself inside the table the PASS rests on
+F7: the P6 row at plan.md:67 still says "Also OQ #8: no tenant<->club mapping exists - the two
+7-row tables join only by code string", while item 8 at plan.md:103 records OQ #8 as resolved
+to a first-class FK. A constitution check re-dated 2026-10-04 and used to assert PASS is
+carrying pre-ruling text.
+F8: the P12 row at plan.md:73 still reads "**Blocked by #1** - No API Spec -> No Merge cannot
+pass until contracts/ exists", eight lines above a gate verdict that says contracts/ exists
+and calls it P12's first gate. Both rows are in the same table, same file, same date.
+
+C1 MEDIUM - the metric that hid D1-D4 for two passes
+74 of 106 tasks carry no REQ/FR/SC id. Most are legitimately traceable through their [USn] tag.
+Five are not: T001, T003, T102, T103 and T104 implement constitution obligations - test runner,
+contract validation, RLS, WCAG, metrics - and hang off principles rather than requirements.
+Because they attach to no requirement, every requirement-coverage view of this feature reports
+them as invisible, and 100% coverage stayed 100% while four MUSTs went uncovered. That is the
+mechanism by which G1-G4 survived two analyze passes. It is worth fixing for that reason alone.
+
+C3 MEDIUM and C4 MEDIUM - two success criteria that cannot fail
+SC-002 ends "unaided", and T095 times the register-approve-login flow without attempting the
+unaided part, so the half that is actually automatable is the half being measured. SC-006
+requires "100% of state transitions" to be logged but never enumerates the transitions, so
+there is no fixed denominator and "100%" cannot be falsified. T005 writes the rows; no task
+defines the population they are a percentage of.
+
+C5 MEDIUM - OQ #10 is the only open question with neither a task nor an owner
+research.md D7 permits the schema to hold a person with no membership, and plan.md item 4
+records that as decided in effect. But spec.md still lists OQ #10 as open, and an open
+question with no task attached is an open question with no owner.
+
+STILL OPEN, DELIBERATELY NOT TOUCHED
+D1-D4 are the constitution conflicts. F1, F2, F3, F4, F5 are the inconsistencies. A1 (FR-011
+clause 1 restates REQ-009, and SC-003 restates both, so one requirement appears in three
+places) and A2 (the endpoint inventory is duplicated across spec.md and both contracts with no
+stated authority) are unchanged from pass 1. C6, the 51 referenced paths that do not exist yet,
+is expected for new work and is not a finding beyond the parent directories being absent. C7
+stands again: specs/002-club-user-integration/checklists/ still does not exist, so there is
+still no requirements quality gate to measure any of this against, including this report.
+This pass was scoped to analysis. It did not widen itself into remediation, and the offer at
+the end was left as an offer.
+
+METRICS
+  Requirements 32 (12 REQ, 12 FR, 8 SC) - 32/32 covered, 100%
+  Tasks 106 - no duplicates, no gaps, monotonic, 56 marked [P]
+  Tasks with no REQ/FR/SC id 74 (69.8%)
+  Tasks naming a concrete file 103/106 (97.2%)
+  Referenced paths 67 - 15 exist, 1 wildcard, 51 absent
+  Contracts 22/24/21 and 4/4/8 - duplicate keys 0, dangling $refs 0
+  Findings 22 - CRITICAL 4, HIGH 6, MEDIUM 9, LOW 3
+  Constitution v2.0.0 - 8 of 12 aligned, 4 conflicts, all CRITICAL
+
+FILES TOUCHED
+  Logs to build dashboard.md                            (this block)
+Read-only analysis pass - spec.md, plan.md, tasks.md, research.md, data-model.md, design.md,
+quickstart.md, contracts/, the constitution, ci.yml, both requirements files and
+01_initial_schema.sql were read and not modified, per the command's read-only constraint. The
+probe and coverage scripts were written to the temp directory, outside the repository.
+
+WORKING TREE HYGIENE
+Unchanged from the last block and still not mine: scripts/ingest_common.py,
+scripts/ingest_routines.py, scripts/person_names.py, scripts/routine_identity.py,
+tests/test_ingest.py, tests/test_routine_identity.py, tests/test_auth_provisioning.py, an
+untracked t.py, a deleted tmp_actions.md, and api/user-management as a modified submodule
+that was read but not touched. Do not stage any of it as part of the 002 work.
+
+NEXT
+Do not run /speckit.implement. Four CRITICAL constitution conflicts are open, and unlike K1/K2
+these do not change the shape of the work - they change whether the work is compliant. D2 is
+the one to fix first because it is a single CI job and it converts 57 ungated tasks into
+gated ones. D1, D3 and D4 are four more tasks, none of which needs a design decision, and the
+previous block already proposed them as cheap - the only new fact is that they are not cheap
+to leave, because the amendment made them MUSTs.
+
+Then the mechanical ones, all under an hour and each of which removes a specific trap:
+correct T001's premise and move the pin to requirements-dev.txt (F2), move T006 into Phase 2
+after T010 (F1), narrow REQ-009's disjunction to the branch T077 implements (F4), and rewrite
+FR-009 to name the two writers with T040's and T071's ordering rule (F3).
+
+F5 needs a decision rather than an edit - either design.md:275 becomes references as_club(id),
+or FR-003's club-scoped teams are wrong - and it should be decided before any migration
+creates as_team, because design.md:401 currently describes as_team as a sync mirror with no
+migration of its own, which is how a wrong foreign key would survive longest.
+```
+
+</details>
+
+<details>
+<summary><h2>2026-10-04 002-club-user-integration conflicts and blockers fix</h2></summary>
+
+
+follow the same style and format to capture the spec analyze execution summary to session
+`2026-10-04 002-club-user-integration conflicts and blockers fix` in `Logs to build dashboard.md` MD file
+
+```text
+READ FIRST (scope of this pass)
+The six items named in the prompt, each traced across every artifact that could contradict
+it: .specify/memory/constitution.md (the MUST clauses, verbatim), and for 002-club-user-integration
+spec.md, plan.md, tasks.md, research.md, data-model.md, design.md, quickstart.md and both
+contracts. The live DB was NOT re-queried; schema facts are the ones data-model.md recorded
+from information_schema on 2026-10-03, plus the 7/7 tenant-code match already verified.
+
+THE HEADLINE IS NOT THE ONE THE PROMPT ASSUMES
+All six rulings were already applied to spec.md, plan.md, tasks.md, research.md,
+data-model.md and the constitution. The amendment work was not outstanding. So this pass
+was NOT "apply six rulings" - it was "find every place that still describes a ruling as
+unresolved". That is a different job and it found real breakage, including one dangling
+$ref that no earlier pass had caught. Had I stopped at confirming the six, all of it would
+have shipped.
+
+STALE TEXT FOUND AND CORRECTED - each one actively contradicted a ruling
+
+  quickstart.md S5 still said the multi-club check "cannot pass until the UPSTREAM
+    membership constraint is relaxed", and "Known blockers for this run" item 1 was
+    "Phase 0 (upstream)". T008 landing in this phase is precisely the correction of that,
+    and the quickstart is the document an implementer runs. Rewritten to name
+    06_membership_multi_role.sql and tasks.md T008, and to record that calling it upstream
+    was wrong because membership is defined in this tree at 01_initial_schema.sql.
+    Blockers 1 and 2 merged honestly: both are now missing local migrations.
+
+  contracts/openapi.yaml claim-account was still the SEEDED-CONVERSION contract -
+    ClaimAccountRequest required [email, current_password, new_password] and the
+    operation summary read "Take over a seeded placeholder account". That is the endpoint
+    OQ #9 was ruled against. It now requires a single-use admin-issued claim_token, and
+    current_password survives as OPTIONAL, required only for the 9 legacy accounts still
+    holding a seed default - which is the only way PASSWORD_NOT_CHANGED stays a testable
+    requirement (spec.md US6 scenario 2) now that the token, not the old password, is what
+    authorises the claim. Removing current_password outright would have quietly deleted a
+    scenario from the spec.
+
+  contracts/openapi.yaml RegisterClubRequest.code still said it was "currently the ONLY
+    join between tenant and as_club - there is no mapping table (research.md D5, OQ #8)".
+    OQ #8 resolved the opposite way: as_club.tenant_id NOT NULL FK, with the code match
+    demoted to a one-time backfill key. A contract that tells the implementer the string
+    join is the design would have produced exactly the X-Tenant-Id breakage the ruling
+    exists to prevent.
+
+  ClubRef had no tenant_id, in BOTH contracts - so the field the BFF needs to derive
+    X-Tenant-Id was not in the document that defines ClubRef. Added as required, plus an
+    explicit derivation rule in dashboard-bff.yaml: as_club_membership -> as_club ->
+    as_club.tenant_id, resolved per request, and the header is an OUTPUT of resolution,
+    never an input - a caller with two clubs must not be able to pick the tenant by
+    sending it.
+
+  Team.lead_coach_person_id and POST /teams said only "may reference a person with no
+    account". After OQ #2 that is the misleading half: a reader would reasonably infer
+    that naming someone lead coach grants them something. It grants nothing. Both now say
+    so and name app_has_club_role(club, ['coach']) as the actual authorization.
+
+  tasks.md T083 still read "Confine to T008 if OQ #9 keeps seeded placeholders" - a
+    conditional on a question that is closed. It would have read as an open option.
+
+  tasks.md T105 named four design.md corrections and MISSED the ones this pass was about.
+    design.md §4.1.1 still says "one membership upstream", §10 item 1 says the constraint
+    is "an upstream date to confirm", §10 item 2 still lists coach scope as an open
+    question, and §11 heads Phase 0 "Blocking dependency (upstream, separate repo)".
+    T105 extended to cover all of them.
+
+WHY design.md MATTERS MORE THAN ITS MTIME SUGGESTS
+plan.md says "Where this plan and design.md disagree, design.md wins and this plan is
+wrong." design.md is pre-existing and its mtime is 2026-10-03, so it looks untouched -
+but it is still NORMATIVE, and the OQ #2 ruling is defeated in practice unless design.md
+§6.5 and §11 stop proposing app_is_team_lead(team) and calling Phase 0 upstream. A ruling
+recorded only in the newer artifacts loses to the older one by the project's own
+precedence rule. This is why T105 - not this pass - is where design.md is edited.
+
+A DANGLING $ref, AND WHY NO VALIDATION CAUGHT IT
+POST /teams referenced #/components/schemas/CreateTeamRequest. That schema did not exist
+in either document. It has existed since the contracts were written on 2026-10-03 and no
+pass since had checked $ref resolution - the planning block checked path/operation counts
+after splitting the documents and reported 22/24/20 and 4/4/8, which is exactly the kind
+of green number that says nothing about a reference. Added the schema (21 now) and wrote
+a checker that fails on: duplicate mapping keys, unresolved $refs, and required properties
+missing from properties. Re-ran both documents - 22 paths / 24 ops / 21 schemas and
+4/4/8, no duplicate keys, 38 refs all resolving. "It parsed" was never the test; the
+2026-10-03 block already recorded that YAML keeps the LAST duplicate key and reports
+nothing, and this is the same lesson wearing different clothes.
+
+ONE JUDGEMENT CALL, FLAGGED RATHER THAN BURIED
+PASSWORD_NOT_CHANGED is now unreachable in the shape the contract used to describe: if a
+claim_token authorises the claim, the caller never presents the old password, so the
+service cannot compare it. Rather than delete the error code - which would have quietly
+dropped spec.md US6 scenario 2 and a documented error code from three places - I made
+current_password optional and required it precisely for the 9 legacy seeded accounts,
+which are the only rows that still hold a seed default. If you would rather drop the code
+entirely, that is a spec edit and it touches spec.md US6, both contracts and tasks.md T004.
+
+STILL OPEN, DELIBERATELY NOT TOUCHED
+The other 16 findings from the analyze block are unchanged: I1/I2 spec.md schema names
+(now already correct in spec.md, but design.md's own copies remain T105's job), I3 the
+two-writer ACTIVE invariant, U1 REQ-009's disjunction, D1/D2 triplication, and G1-G4 -
+the four constitution coverage gaps, which are still the cheapest high-value work
+remaining and still have no merge gate to run in. This pass was scoped to six items and
+did not widen itself. G5 also stands: specs/002-club-user-integration/checklists/ does not
+exist, so there is still no requirements quality gate to check any of this against.
+
+ONE MORE THING I DID NOT FIX
+design.md §4.2 declares as_team.club_id as "uuid not null references tenant(id)" while
+as_club_membership.club_id references as_club. One of those is wrong and it is not any of
+the six items. Recorded here rather than folded into T105, because guessing which side is
+correct needs a schema read I did not do this pass.
+
+FILES TOUCHED
+  .specify/memory/constitution.md          (already amended to v2.0.0 - verified, not changed here)
+  specs/002-club-user-integration/quickstart.md        S5 heading + blocker note; Known blockers 1-2
+  specs/002-club-user-integration/contracts/openapi.yaml
+      /auth/register description; /auth/claim-account operation + ClaimAccountRequest;
+      POST /teams + Team + new CreateTeamRequest; RegisterClubRequest.code; ClubRef;
+      governance basis paragraph in info
+  specs/002-club-user-integration/contracts/dashboard-bff.yaml
+      X-Tenant-Id derivation rule; ClubRef.tenant_id
+  specs/002-club-user-integration/tasks.md              T083; T105
+  Logs to build dashboard.md                            (this block)
+No code, migration, config, dependency or Speckit script was changed. Nothing is
+implemented; this is still a documentation-and-planning feature.
+
+WORKING TREE HYGIENE
+The tree still carries unrelated pre-existing work (scripts/ingest_common.py,
+scripts/ingest_routines.py, scripts/person_names.py, scripts/routine_identity.py,
+tests/test_ingest.py, tests/test_routine_identity.py, tests/test_auth_provisioning.py,
+an untracked t.py, a deleted tmp_actions.md) and api/user-management remains a modified
+submodule that was read but not touched. All of it predates this pass. Do not stage it as
+part of the 002 work.
+
+NEXT
+T008 and the OQ #8 ruling are now consistent across all six artifacts, which means Phase 0
+is genuinely unblocked and the MVP critical path T001 -> T010/T015 -> T025 -> T037 can
+start. Two things are worth doing before implementation rather than during it, because both
+are cheap now and expensive after code exists: add T105's design.md corrections (the
+precedence rule makes them load-bearing, not cosmetic), and add the four G1-G4 tasks -
+unit tests for the two state machines, a merge gate on a recorded test run, a dashboard
+render SLA measurement, and metrics plus tracing. None of them need a design decision, and
+all of them are currently invisible to CI.
+```
+
+</details>
+
+<details>
+<summary><h2>2026-10-04 002-club-user-integration spec analyze</h2></summary>
+
+/speckit.analyze
+
+execution
+
+follow the same style and format to capture the spec analyze execution summary to session
+`2026-10-03 002-club-user-integration sprc analyze` in `Logs to build dashboard.md` MD file
+
+```text
+READ FIRST (scope of this pass)
+spec.md, plan.md and tasks.md for 002-club-user-integration, plus .specify/memory/
+constitution.md read verbatim for the MUST clauses, plus data-model.md and
+contracts/openapi.yaml as the tie-breakers when the three core artifacts disagreed. The
+live DB was NOT re-queried; schema facts were taken from data-model.md, which recorded
+them from information_schema on 2026-10-03.
+
+STRICTLY READ-ONLY, AND THAT CONSTRAINT WAS HONOURED
+/speckit.analyze forbids editing. No spec, plan, task, contract or config file was
+modified in this pass. The findings below are a report only. Nothing was auto-remediated,
+and the offer at the end was left as an offer.
+
+HEADLINE
+Coverage is perfect and the artifacts are still not ready. All 30 requirements (12 FR,
+10 REQ, 8 SC) have at least one task - 100%, zero orphans, no unmapped tasks. And two
+CRITICAL constitution MUST violations are unresolved, one of which decides whether
+as_person and as_club_membership stay in the dashboard database at all. Separately,
+spec.md is the single stale artifact: on three specific schema facts it contradicts
+tasks.md AND contracts/openapi.yaml, which independently agree with the live database.
+
+CHECKS THAT CAME BACK CLEAN - do not re-run these expecting different answers
+  106 tasks: no duplicate IDs, monotonic T001..T106, no gaps, 56 marked [P].
+  Every task names a concrete file except T008, which is in another repository.
+  No placeholders anywhere (TODO/TKTK/FIXME/XXX/???/TBD): zero hits.
+  No vague adjectives (fast/scalable/secure/intuitive/robust/seamless/appropriate) in any
+  FR or SC: zero hits.
+  No endpoint is claimed by two different FRs: the duplication probe returned empty.
+  73 referenced file paths resolve - 11 already exist as edit targets, 62 are creations.
+  All 6 user stories have their own phase. All 12 FRs, 10 REQs and 8 SCs are cited by ID.
+That last line is the point: a mechanical pass over these three files is green. The
+findings below were only reachable by cross-reading against the constitution and the live
+schema, which is why "everything validates" and "it is ready to build" are not the same
+statement.
+
+CRITICAL - constitution MUST, non-negotiable, cannot be diluted by a note
+
+K1 CRITICAL - principle 16 vs the approved design. constitution.md:90 says local databases
+"MUST only store UUID references to these external identities, never duplicating profile or
+auth data." design.md 4.2 puts as_person (names, birth_date), as_club_membership (roles),
+as_person_link and as_team IN the dashboard database so RLS can evaluate membership inside
+Postgres. plan.md:75 and :197 record this as a CONFLICT and tasks.md T007 schedules the
+owner ruling - but tasks.md Phase 9 then proceeds to build the dashboard consumer anyway.
+Recording a deviation does not satisfy a MUST. This is not a documentation nit: it decides
+whether T074-T081 are building the right thing.
+
+K2 CRITICAL - principle 7 requires OAuth2. constitution.md:42 "MUST implement strict
+security standards: OAuth2 for authentication." plan.md:66 specifies GoTrue
+sign_in_with_password and plan.md:198 files it under "Principle 7 deviation". Same problem:
+a deviation is not compliance. Either adopt OAuth2 or amend principle 7 in a separate,
+explicit constitution update. This plan has no authority to do either.
+
+HIGH
+
+I1 HIGH - spec.md mandates a column that does not exist, in six places: L96, L98, L101,
+L140, L154, L171 all say lead_coach_id. The live column is lead_coach_person_id.
+tasks.md:222 and contracts/openapi.yaml:606 both use the correct name. spec.md is the lone
+outlier, and REQ-003 plus FR-004 are written against it. Build from the requirement text
+literally and T064 targets a column that was never created.
+
+I2 HIGH - spec.md:102 requires as_team_member.title = 'Team Captain'. There is no such
+column. Captain is team_role='CAPTAIN'. data-model.md D3 says the design.md 6.5 mechanism
+"does not exist and must not be built", and the contract says so at :835. Two independent
+artifacts flag this; the spec still asks for it.
+
+I3 HIGH - the "single writer" invariant is stated one way and specified another way.
+research.md D2's own heading asks "What is the single writer of user_profile.status =
+'ACTIVE'?" and its answer names TWO: PATCH /auth/me/enable for self-service AND
+POST /auth/claim-account for the seeded path. spec.md:159 FR-009 says "The single writer".
+The invariant the whole design is built to guarantee - one auditable edge out of INVITED -
+is specified as two edges. Cheap to decide, expensive to discover in production.
+
+U1 HIGH - spec.md:146 REQ-009 is disjunctive: verify_jwt MUST be removed OR collapsed onto
+core/auth.get_current_user. Both outcomes satisfy it, so neither can be tested, and
+tasks.md T077 implements only the removal branch without saying so.
+
+B1 HIGH - T008, the upstream membership UNIQUE (tenant_id, user_id) relaxation, is marked
+[EXTERNAL REPO]. REQ-002, US2 scenario 3 and S5 all depend on it. Coverage is claimed and
+is real, but it is not deliverable in this repository by anyone working here.
+
+U2 HIGH - research.md D1 deletes ingest account creation, and US6 exists to convert seeded
+accounts that D1 stops creating. spec.md:107-118 and plan.md Phase A still scope US6 as
+deliverable. tasks.md T071 correctly forces the OQ #9 decision first, which means the task
+list knows something the spec does not.
+
+MEDIUM
+
+D1/D2 MEDIUM - two duplications, both in the auth area. FR-011's first clause ("verify JWT
+signatures unconditionally") restates REQ-009. SC-003 restates both as an outcome metric.
+Three artifacts, one requirement, phrased three times.
+
+G1 MEDIUM - constitution.md:66-68 (principle 12) mandates "No API spec -> No Merge", "No
+tests -> No Merge" and contract validation before deployment. tasks.md T003 covers spec
+validation only. NO task gates a merge on test results, so one of the three gates is simply
+absent.
+
+G2 MEDIUM - constitution.md:50 (principle 9) requires TWO SLAs: dashboard rendering under
+2 seconds AND API under 300ms. tasks.md T103 measures only API latency. Half the mandate
+is uncovered.
+
+G3 MEDIUM - constitution.md:55-60 (principle 10) requires structured logging, metrics,
+distributed tracing AND audit logs. T102 covers structured logging with correlation IDs.
+Metrics and tracing have no task.
+
+G4 MEDIUM - constitution.md:24-30 (principle 3) mandates unit tests for all business logic.
+The task list defines contract, integration and e2e suites. There is no unit-level task for
+the user_profile / as_club_membership state machines, which is precisely the business logic
+the principle names.
+
+U3 MEDIUM - SC-002 says a member can complete register -> approve -> login "unaided in
+under 3 minutes". "Unaided" requires a human observer; T095 automates the timing. Half the
+criterion is not automatable as written.
+
+U4 MEDIUM - SC-006 says 100% of state transitions appear in audit_log, but the transition
+set is never enumerated, so the assertion has no fixed denominator. T005 writes the rows;
+nothing defines the population being asserted complete.
+
+U5/U6 MEDIUM - two unresolved open questions gate concrete tasks. OQ #2 (coach scope) gates
+T064/T070 app_is_team_lead(). OQ #8 (tenant-to-club mapping) gates T076 X-Tenant-Id
+derivation. Both are recorded as decisions in tasks.md and as open questions in spec.md, so
+neither artifact is wrong - but the tasks read as firm while their inputs are not.
+
+LOW
+
+I4 LOW - plan.md:110 and tasks.md T105 both cite 20260820_full_schema.sql, which does not
+exist. The real file is 20260927_all_schema_from_scratch.sql. Already scheduled as T105.
+
+U7 LOW - 73 referenced paths resolve but several parent trees do not exist yet:
+api/user-management/backend/tests/contract/, api/user-management/supabase/tests/,
+backend/tests/e2e/, backend/tests/perf/. Normal for new work; worth one setup line.
+
+U8 LOW - 78 of 106 tasks carry no requirement ID inline. Most are legitimate fine-grained
+sub-steps of a cited task, but T003, T102, T103 and T104 implement constitution obligations
+that have no requirement key at all - they hang off principles rather than off REQs.
+
+G5 LOW - specs/002-club-user-integration/checklists/requirements.md does not exist, so this
+analysis had no authoritative quality gate to check itself against.
+
+TWO OF MY OWN PROBES WERE WRONG - recorded so neither is mistaken for a finding
+
+1. I suspected setup-tasks.ps1 had a bug: it reports AVAILABLE_DOCS as
+[research.md, data-model.md, contracts/, quickstart.md, tasks.md] and omits spec.md and
+plan.md, which made it look like the script could not see the two most important files.
+It is not a bug. Lines 23 and 30 validate spec.md and plan.md separately and hard-error if
+either is missing; AVAILABLE_DOCS is only the optional-docs list. Verified by reading the
+script rather than reporting the symptom.
+
+1. A line-range slice made it look like constitution.md paired "### 4. Data Integrity" with
+the text "The platform MUST implement strict security standards". That was my slicing
+artifact - the security text belongs to principle 7 at line 40. Re-read lines 31-48
+verbatim to confirm. Had I trusted the slice I would have reported a fabricated
+constitution violation.
+
+MY OWN REPORT CONTAINED AN ARITHMETIC ERROR
+The metrics block I printed said "Medium: 8". The findings table has ten MEDIUM rows
+(D1, D2, G1, G2, G3, G4, U3, U4, U5, U6). Correct totals are 2 CRITICAL, 6 HIGH, 10
+MEDIUM, 4 LOW = 22 findings. I counted the MEDIUM rows in the table wrong when writing the
+summary line. Recording it because the whole value of this log is catching exactly this: a
+green-looking summary that disagrees with its own evidence. The per-finding table was right;
+only the tally was wrong.
+
+ORDERING NOTE FOR WHOEVER READS THIS FILE NEXT
+This block is dated 2026-10-04 and sits at the top of the dated group, which matches the
+file's newest-first convention. The remaining 2026-10-03 pair is still inverted: "planning"
+sits ABOVE "user management design gap", but design gap came first chronologically and
+planning was derived from it. Each block was captured in its own named slot as asked, so
+nothing was reordered. True chronology is: design gap -> planning -> analyze.
+
+FILES TOUCHED
+Logs to build dashboard.md (this block) only. Read-only analysis pass - spec.md, plan.md,
+tasks.md, data-model.md, contracts/ and the constitution were read and not modified, per
+the command's read-only constraint.
+
+NEXT
+Do not run /speckit.implement. K1 and K2 are CRITICAL and both change the SHAPE of the work
+rather than its size - K1 decides whether as_person and as_club_membership remain in the
+dashboard at all, which would invalidate T074-T081 and possibly REQ-008. Rule on those two
+first; they are outside this plan's authority and need either a constitution amendment or an
+explicit accepted exception.
+
+Then the cheap high-value fixes, none of which need a design decision: correct spec.md's
+seven stale schema lines (I1, I2) so the requirement text stops contradicting the tasks and
+the contract; settle I3 by naming one writer of ACTIVE or declaring two with an ordering
+rule; and narrow REQ-009's "or" to one outcome (U1). Those three are under an hour and they
+remove the specific traps that would otherwise be built straight into Phase B.
+
+The constitution coverage gaps (G1-G4) are real and cheap to close with four tasks. I would
+add them. But note they only matter once there is a merge gate to run them in - G1 says
+there is not one yet.
+```
+
+</details>
+
+<details>
+<summary><h2>2026-10-03 002-club-user-integration planning</h2></summary>
+
+/speckit.plan
+
+Set SPECIFY_FEATURE_DIRECTORY=specs/002-club-user-integration, repoint AGENTS.md, then
+/speckit.specify for 002 -> /speckit.plan.
+
+follow the same style and format to capture the execution summary the session
+`2026-10-03 002-club-user-integration planning` in `Logs to build dashboard.md` MD file
+
+```text
+READ FIRST (scope of this pass)
+specs/002-club-user-integration/design.md and that folder's auth-users-lifecycle-plan.md
+(the inputs), specs/001-analytics-dashboard/identity-contract.md (authoritative
+vocabulary), .specify/memory/constitution.md, and .specify/extensions.yml. The live DB was
+NOT re-queried this session - the counts recorded in the 2026-10-03 design gap block
+below stand, and were reused deliberately rather than re-derived.
+
+TOOLING MISMATCH, RECORDED SO IT IS NOT RETRIED
+The active feature was 001. check-prerequisites.ps1 -Json -PathsOnly returned FEATURE_SPEC
+and IMPL_PLAN under specs/001-analytics-dashboard, while every artifact under discussion
+belongs to 002. 002 held design.md + auth-users-lifecycle-plan.md and NO spec.md, plan.md,
+research.md, data-model.md, contracts/ or quickstart.md. So /speckit.plan could not run as
+written, and /speckit.analyze still cannot compute coverage because there is no tasks.md to
+derive percentages from. The owner chose option A: repoint the feature at 002, fix the
+AGENTS.md pointer, then produce spec + plan for 002 by hand.
+
+FIXTURE FACTS, SO THE SCRIPTS DO NOT GET PATCHED
+setup-plan.ps1 is non-destructive when plan.md already exists - it copies the template only
+if the target is missing - so it was safe to run against 002. check-prerequisites.ps1 starts
+resolving 002 the moment .specify/feature.json is repointed; no script edit was required.
+The whole fix was one line of feature.json. Do not modify the Speckit scripts.
+
+WRITTEN
+  specs/002-club-user-integration/spec.md             153 ln
+  specs/002-club-user-integration/plan.md              157 ln
+  specs/002-club-user-integration/research.md          169 ln
+  specs/002-club-user-integration/data-model.md        210 ln
+  specs/002-club-user-integration/quickstart.md        211 ln
+  specs/002-club-user-integration/contracts/openapi.yaml       881 ln
+  specs/002-club-user-integration/contracts/dashboard-bff.yaml 257 ln
+Edited: .specify/feature.json (one line), AGENTS.md (one line),
+specs/002-club-user-integration/design.md (two lines - see D1).
+001-analytics-dashboard: untouched, git status clean for that path.
+
+D1 MEDIUM - design.md could not reach the document it calls authoritative
+Both references to specs/001-analytics-dashboard/identity-contract.md were written as
+../../001-analytics-dashboard/identity-contract.md. From specs/002-club-user-integration/
+that climbs one directory too far and resolves to a path that does not exist; the correct
+form is ../001-analytics-dashboard/. The link check found 2 broken links, both in this
+pre-existing file, neither in anything written this session. Fixed, because design.md 1.1
+makes that document the authority the entire spec rests on and the pointer to it dangled.
+Content drift in design.md (lead_coach_id vs lead_coach_person_id, as_team_member.title,
+as_club_membership.approved_by/approved_at, the four missing migration filenames) was NOT
+edited - it is recorded in research.md and data-model.md as Phase C work, because those
+corrections need the P16 ruling below first.
+
+D2 HIGH - a single merged OpenAPI document was silently wrong, and this is worth remembering
+The first attempt put the user service and the dashboard BFF in one contracts/openapi.yaml.
+Both declare POST /auth/login and POST /auth/register. YAML does not error on a duplicate
+mapping key - it keeps the LAST one and discards the first. The document parsed cleanly, had
+no duplicate paths, and every $ref resolved, while describing an API that does not exist:
+one of each auth route had silently vanished. A validator reports nothing because from YAML's
+point of view there is nothing wrong. Split into two documents with distinct base paths
+(/api/v1 for the user service, /api for the dashboard BFF) and distinct trust models, which
+is the honest shape anyway - the BFF exists only to keep X-Internal-Secret away from the
+browser. Re-parsed after the split: user service 22 paths / 24 operations / 20 schemas,
+BFF 4 paths / 4 operations / 8 schemas. Anyone extending these contracts: do not merge them
+back, and do not trust "it parsed" as evidence the routes are all still there.
+
+D3 MEDIUM - the after_plan hook is broken on this machine, independently of this feature
+.specify/extensions.yml sets auto_execute_hooks: true and after_plan -> enabled: true,
+optional: true, command speckit.agent-context.update. The command is not a binary; its
+implementation is .specify/extensions/agent-context/scripts/powershell/
+update-agent-context.ps1. Running it fails at line 81 with "Program 'python3.exe' failed to
+run: StandardOutputEncoding is only supported when standard output is redirected" - it probes
+`python3 --version` and the probe cannot redirect. This will fail for every future hook
+invocation, not just this one. Left unfixed rather than patching an extension unasked; the
+hook's actual goal was already satisfied by editing the AGENTS.md block directly. The hook was
+invoked with an explicit plan path rather than left to auto-detect the most recently modified
+specs/*/plan.md, so the result could not depend on file mtimes.
+
+MY OWN ERROR, RECORDED SO IT IS NOT REPEATED
+Mid-session I measured AGENTS.md at "30 lines" with the Read tool, then at "20 lines" with
+(Get-Content f).Count after running the hook, and concluded the hook had truncated the file.
+It had not. Measure-Object -Line excludes blank lines and this file has 10 of them; the Read
+tool counts every line. git diff showed exactly one changed line and nothing else. The
+alarming diff was an artifact of the measuring command, not a real edit. Check git diff before
+concluding a tool damaged a file.
+
+CONSTITUTION GATE - CONDITIONAL PASS, TWO ITEMS NEED AN OWNER RULING
+This gate is not clean. Recording it as pass/fail would be the wrong answer.
+I API First - now genuinely satisfied: two OpenAPI 3.1 documents exist where the contract was
+prose in design.md. This was the one violation the last session could act on directly.
+III Test First - still weak. tests/test_auth_provisioning.py asserts DB rows after sync, so
+the INVITED-only state (G4 in the block below) remains invisible to the suite. The fix is
+test-first in the new work, not retroactive.
+VI Multi-Tenant - PARTIAL, unchanged. No tenant-to-club mapping; membership keyed
+(tenant_id, user_id).
+VII OAuth2 mandate - DEVIATION. The constitution requires OAuth2; the design specifies Supabase
+GoTrue email + password. Recorded as a deviation rather than silently reconciled.
+XII External User Management - UNRESOLVED, and it is the load-bearing one. The constitution
+permits UUID references to an external identity only, but the approved design stores as_person,
+roles, links and teams in the dashboard database so RLS can filter reads. The two cannot both
+be satisfied. This needs a human decision and it gates Phase B, not just Phase C.
+
+BLOCKING DEPENDENCY, CARRIED FORWARD NOT RESOLVED
+The upstream membership table still has UNIQUE (tenant_id, user_id) - one role per user per
+tenant - which cannot express one person being a swimmer in two clubs and a coach in a third.
+The local dashboard schema already permits it via uq_as_club_membership_active on
+(person_id, club_id, role) where status in (invited, active). So the two halves of the system
+disagree today, and research.md D8 recommends replacing the legacy table with the as_*
+membership rather than merely relaxing the constraint. Until an owner rules, multi-club roles
+cannot be implemented end to end, which is why quickstart scenario S5 is documented as
+expected-fail rather than quietly omitted.
+
+QUICKSTART SCENARIOS WRITTEN AS ACCEPTANCE CHECKS
+S1 register -> 403 PENDING_APPROVAL -> approve -> login (US1, US2; SC-001, SC-002)
+S2 a person with no login at all (US4; REQ-001, SC-008) - the scenario the redesign exists for
+S3 parent link, club scoping, and revoke WITHOUT re-login (US3; SC-004)
+S4 forbidden-claim conformance: athlete_ids, scalar club_id, flat roles (SC-005)
+S5 multi-club role resolution - documented as blocked on the constraint above (US2)
+S6 ingest creates no credential and stays idempotent (SC-001)
+S7 exactly one verified auth path, incl. alg:none and wrong-key rejection (SC-003)
+Each maps to a numbered success criterion, so a failure is traceable to a requirement rather
+than to "something is broken". S3's revocation check is the load-bearing one: it passes only
+if authorization is read from as_person_link on every request, because the token carries no
+club scope. If it passes only after a re-login, authorization has leaked into the token and
+SC-004 has failed.
+
+ENVIRONMENT GOTCHAS WORTH KEEPING
+Host-side DATABASE_URL is still unusable against supabase-db (see the 2026-09-17 note); query
+through `docker exec -it supabase-db psql -U postgres -d postgres`.
+APP_ENV is still absent from the root .env, so the dev branch of /api/auth/login is the live
+one. quickstart.md now requires APP_ENV=development AND DEMO_AUTH_ENABLED=false before any
+acceptance run.
+
+WORKING TREE HYGIENE
+api/user-management is a modified git SUBMODULE and was not touched here - it was only read.
+The tree also carries unrelated pre-existing work (scripts/ingest_common.py,
+scripts/ingest_routines.py, tests/test_auth_provisioning.py, tests/test_ingest.py, an
+untracked t.py, scripts/person_names.py, scripts/routine_identity.py,
+tests/test_routine_identity.py, and a deleted tmp_actions.md). All of it predates this
+session and was preserved. Do not stage it as part of the 002 planning work.
+
+FILES TOUCHED
+Logs to build dashboard.md (this block) | .specify/feature.json | AGENTS.md |
+specs/002-club-user-integration/design.md (2 link fixes) | and the 7 new artifacts listed
+under WRITTEN. No code, migration, config, dependency or Speckit script was changed. This is
+a documentation-and-planning pass; nothing here is implemented.
+
+NEXT
+tasks.md is the missing piece - /speckit.analyze cannot compute real coverage without it. But
+the honest order is to settle the UNIQUE (tenant_id, user_id) constraint first, because S5 and
+the tasks that depend on it cannot be written truthfully until multi-club roles are
+representable. The XII External User Management ruling is the other thing standing between
+this plan and Phase B; it decides whether the dashboard keeps storing as_person and roles at
+all, which changes the shape of the service work rather than just its size. Say which of the
+two you want to take first and I will pick it up from there.
+```
+
+</details>
+
+<details>
+<summary><h2>2026-10-03 user management design gap</h2></summary>
+
+follow the same style and format to capture the analysis to the session `2026-10-03 user management design gap` in `Logs to build dashboard.md` MD file
+
+```text
+READ FIRST (scope of this pass)
+.constitution, specs/001-analytics-dashboard/identity-contract.md (the authoritative
+vocabulary), specs/002-club-user-integration/design.md, that folder's
+auth-users-lifecycle-plan.md, both backend/supabase/migrations files, the whole
+api/user-management service, scripts/user_mgmt_sync.py + ingest_*, backend/src/api/auth.py,
+backend/src/core/auth.py, the Angular AuthService/guards/routes, and the LIVE database.
+
+TOOLING MISMATCH, RECORDED SO IT IS NOT RETRIED
+check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks returns FEATURE_DIR =
+specs\001-analytics-dashboard and AVAILABLE_DOCS = [research.md, data-model.md, contracts/,
+quickstart.md, tasks.md]. The target folder is 002-club-usertegration, which has design.md and
+auth-users-lifecycle-plan.md and NO spec.md / plan.md / tasks.md. So the stock /speckit.analyze
+cannot run as written, there is no tasks.md to derive coverage percentages from, and the 002
+endpoint contract exists only as prose in design.md. Everything below is therefore derived from
+design.md + code + live DB, not from a requirements/task pair.
+
+HEADLINE
+The identity SCHEMA is done and populated. The identity SERVICE does not exist. 002 is
+implemented at the data layer and absent at the API, token, approval and UI layers. Nothing in
+the current code can log a user in through the designed path, and the path that does work
+(/api/auth/login) is a development fallback that is live by default.
+
+LIVE DB VERIFIED, NOT ASSUMED
+docker ps: supabase-db up 7 days (healthy). Queried through docker exec (host-side
+DATABASE_URL is not usable - see the 2026-09-17 note about the password, still true).
+  as_person 18 | as_person_identity 10 | as_club_membership 18 | as_person_link 0
+  as_result_person_link 79 | as_club 7 | as_team 7 | as_team_member 9
+  tenant 7 | user_profile 9 | membership 9 | role 15 | tenant_api_keys 7 | auth.users 9
+  as_club_membership: swimmer/active 17, coach/active 1  (nothing else)
+  user_profile.status: INVITED 9. Zero ACTIVE, zero SUSPENDED.
+  role table: ORG_ADMIN, ORG_USER, PLATFORM_ENGINEER (three tenants each)
+  as_club: AST SFM SND SST MQI SGS SDS - real clubs, real names
+  as_team_member.team_role: ATHLETE 9 (no lead coach anywhere)
+  as_person WITHOUT an identity row: 8. as_person WITHOUT a membership: 0.
+  as_result_person_link by table: figure 36, routine 43; figure results with no link: 0
+  RLS enabled: as_person, as_person_identity, as_club_membership, as_person_link,
+  as_result_person_link, tenant_api_keys, user_profile.
+  RLS NOT enabled: as_club, as_team, as_team_member.
+DB HAS BEEN RESET since the last session - auth.users was 480 with 480/480 bcrypt $2a$10$
+populated, it is 9 now. auth-users-lifecycle-plan.md still quotes the 480 numbers; that
+paragraph is stale and should not be cited as current state.
+
+GAPS (severity ordered)
+
+G1 CRITICAL - not one of the 002 endpoints exists. design.md 4.1 / 5.1 specify
+POST /auth/register, POST /auth/login, /members/{person_id}/approve,
+/persons/{person_id}/invite-account and the person-link routes. api/user-management/backend/
+src/api/main.py registers exactly five routers: audit, roles, tenants, users, webhooks. No
+auth, no members, no persons, no person-links. Registration, activation and login are 0/4.
+
+G2 CRITICAL - the user-management service issues no tokens, so it cannot be the issuer the
+design names. api/user-management/backend/src/core/security.py is 12 lines containing only
+verify_gateway_psk. There is no jwt.encode anywhere in the service. The RS256 issuer
+described in design.md 6.4 does not exist.
+
+G3 CRITICAL - what actually authenticates is a dev fallback, and it is enabled. backend/src/
+api/auth.py:62 POST /api/auth/login mints an HS256 token at lines 90-106 with iss="sst-demo-auth"
+and aud=settings.APP_NAME, signed with USER_SERVICE_JWT_SECRET. It refuses only when
+APP_ENV == "production" (lines 65-66); APP_ENV is absent from the root .env, so the dev branch
+is the live one. USER_SERVICE_JWT_SECRET is empty, so today the endpoint 503s. Set that secret
+and every row in auth.users becomes a valid dashboard session with no approval check at all.
+Worse, config.py registers /api/auth/demo-user, which unauthenticated returns a working session
+for an arbitrary person_id. That is an auth bypass whenever the dev branch is live.
+
+G4 HIGH - user_profile can never leave INVITED. The CHECK allows INVITED / ACTIVE / SUSPENDED /
+SOFT_DELETED and the default is INVITED; all 9 live rows are INVITED. Nothing sets ACTIVE: the
+approve endpoint of G1 does not exist, and user_mgmt_sync.py only ever inserts. So the approval
+gate that 002 is built around has no writer anywhere in the repo.
+
+G5 HIGH - ingest hands every imported athlete a working shared password. user_mgmt_sync.py
+DEFAULT_PASSWORD (line 84) is used by get_or_create_auth_user (line 525), which creates
+auth.users through the GoTrue admin API with generated addresses <first>.<last>@<club>.swim -
+the 9 live accounts are gire.ellie@ast.swim, liu.selina.12u@sgs.swim and so on. This directly
+contradicts design.md 3.2, where login is OPTIONAL and a minor needs no account: 8 of the 18
+as_person rows correctly have no identity, but the other 10 are ingest-created accounts with a
+shared secret rather than invited accounts. Roles are also flattened - every ingest-created
+membership is role=swimmer and every team_member is team_role=ATHLETE, so no ingested athlete
+is ever a coach and no parent is ever provisioned.
+
+G6 HIGH - the service schema is the pre-002 model. There is no 05_org_model.sql; the 002 tables
+are created at RUNTIME by ORG_MODEL_DDL inline in user_mgmt_sync.py:102-145, which means the
+service's own migration history does not describe its schema. membership carries
+UNIQUE (tenant_id, user_id) - one role per user per tenant - which cannot express one person
+being a swimmer in two clubs plus a coach in a third, the thing as_club_membership exists for.
+There is no tenant-to-club mapping table, so tenant and as_club are 7 rows each and nothing
+joins them except the code string. In local dev both halves share one physical Postgres
+(supabase-db), so the logical split is enforced by config only.
+
+G7 HIGH - parent linkage has no writer and no route. as_person_link is 0 rows and the only
+mention in scripts/ is a column-name list in tmp/AdhocTesting/check_table_columns.py:28. No
+ingest, service or UI path creates one, so app_is_guardian_of can never return true and the
+parent role in design.md 5.2 is unreachable end to end.
+
+G8 HIGH - teams cannot hold a coach. 7 as_team rows for 7 clubs, 9 members, all ATHLETE, and no
+lead-coach column is populated. design.md 3.7 wants lead_coach_id on as_team so a coach can be
+scoped to a lineup; nothing populates it.
+
+G9 MEDIUM - three tables have no RLS. as_club, as_team and as_team_member are readable by any
+role that reaches the database. as_club is a 7-row global lookup so the blast radius is small,
+but as_team/as_team_member are roster data and 002 requires reads to be filtered by the
+caller's as_club_membership.
+
+G10 MEDIUM - token verification has a dead branch. backend/src/core/auth.py:76 selects RS256 +
+JWKS when USER_SERVICE_JWKS_URL is set, but that setting defaults to "" and the service that
+would publish a JWKS does not exist (G2), so only the HS256 branch can ever run - i.e. only the
+demo issuer of G3.
+
+G11 MEDIUM - email is encrypted in application code. user_mgmt_sync writes
+pgp_sym_encrypt(email) into user_profile.email (declared TEXT) and reads it back with
+pgp_sym_decrypt. That defeats the unique index on email and any future password-reset-by-email
+flow, ties lookups to pgcrypto, and no vault key is configured under supabase/.env.
+
+G12 MEDIUM - the frontend has no registration, claim or activation surface. AuthService exposes
+login, me, logout and demoLogin only. Every route is canMatch-guarded and the unauthenticated
+wildcard is /login, so there is nowhere to sign up or accept an invite. Club-admin, parent and
+official dashboards all redirect back to /dashboard (swimmer), so the per-club role navigation
+in design.md 5.2 is not built.
+
+G13 MEDIUM - result-to-person linkage is ingest-only. The 79 as_result_person_link rows are real
+and complete for what is loaded (0 unlinked figure results), but they are written by
+scripts/routine_identity.py:40 and scripts/ingest_routines.py:1362, outside the API. Nothing in
+the service reads them, and a name correction in a later PDF leaves the older links in place
+rather than re-resolving.
+
+G14 LOW - naming and migration drift. design.md and identity-contract.md call it club_code while
+the column is as_club.code; as_result_person_link stores the PDF's raw athlete_name while
+person_names.py:192 wants normalized names kept separately; and the migration chain still
+references four files that no longer exist, with an apply order that inverts between the
+filename dates and the header dates.
+
+CONSTITUTION ALIGNMENT
+VI Multi-Tenant - PARTIAL. tenant, club and membership all exist, but there is no tenant-club
+mapping and membership is keyed (tenant_id, user_id) rather than (person_id, club_id).
+XII External User Management - VIOLATED, and this is the load-bearing one. The dashboard mints
+its own tokens (G3) while the service that is supposed to own identity mints none (G2). The
+design's central decision is inverted in the implementation.
+I API First - the 002 contract is prose in design.md; no OpenAPI document is generated for it.
+III Test First - tests/test_auth_provisioning.py asserts DB rows after sync, not an approval
+gate, so the INVITED-only state of G4 is invisible to the suite.
+IV Data Integrity - holds. athlete_name is preserved verbatim on the link row and the ingest
+path is idempotent.
+
+COVERAGE
+Not computable. 002 has no tasks.md, so "requirements with >=1 task" cannot be derived. The
+honest substitute is G1: 0 of 4 designed identity endpoints are implemented.
+
+PROPOSED DESIGN - registration, activation, login for coach / athlete / parent
+
+Separate the four concerns the current code has merged into one INSERT: creating a person,
+claiming an identity for that person, approving the membership, and issuing a session. A person
+must be creatable with no credential at all; that is the whole point of the optional
+as_person_identity, and it is what the 8 un-identified as_person rows already do.
+
+1. Coach, self-registered.
+   POST /auth/register {email, password, full_name, club_code, role: "coach"}
+   -> auth.users row, user_profile status INVITED, as_person, as_person_identity,
+      as_club_membership(role=coach, status=invited) scoped to the club resolved from
+      club_code, tenant_api_keys for the club.
+   No session is returned. A club admin or platform admin approves.
+
+2. Athlete, two distinct paths - and the current code has only the wrong one.
+   2a. Import path (default, and the only one that should exist for minors): ingest creates
+       as_person + as_club_membership(role=swimmer) and NOTHING else. No auth.users, no
+       user_profile, no identity. This is design.md 3.2 and it removes G5 entirely.
+   2b. Claim path: the club invites a specific person by email; the person follows
+       POST /auth/claim-invite {token, email, password}, which sets as_person_identity on that
+       existing person instead of creating a duplicate, then enters the same approval gate as
+       the coach. This is how the current ingest behaviour should be reached deliberately
+       rather than as a side effect of parsing a PDF.
+
+3. Parent.
+   POST /auth/register {email, password, full_name, role: "parent"} creates the parent person and
+   their own identity, with no membership in the child's club by default. Linking is a separate
+   step: POST /person-links {child_person_id, kind: "parent"} requires two consents - the parent
+   requests, and the club or the child's coach approves - because either side alone is a
+   privacy problem for a minor. Only an approved link makes app_is_guardian_of return true.
+
+4. Activation is the single gate, and it is the only exit from INVITED.
+   POST /members/{person_id}/approve, called by a club admin, sets user_profile.status = ACTIVE
+   and as_club_membership.status = active in one transaction, writes an audit_log row, and is the
+   only code path permitted to make that transition. Suspension is its mirror
+   (status = SUSPENDED, sessions refused at verification time rather than at logout).
+
+5. Login.
+   POST /auth/login in the USER SERVICE verifies the GoTrue password, requires
+   user_profile.status = ACTIVE, then mints RS256 with iss = the service, aud = APP_NAME, sub =
+   the auth user id, and resolves the caller's clubs from as_club_membership at verification
+   time. The dashboard verifies via JWKS and authorizes each request from as_club_membership.
+   Deliberately NOT in the token: club_id, person_id-as-authority, roles. design.md 2.1 is
+   explicit that the token carries identity and the database carries authorization, and putting
+   roles in the JWT is what would make a stale token outlive a revoked membership.
+
+6. Retire the fallback.
+   /api/auth/login and /api/auth/demo-user must refuse unless APP_ENV == "development" AND a new
+   DEMO_AUTH_ENABLED flag is explicitly true. Today the guard is a single APP_ENV check with no
+   second condition, and APP_ENV is unset, so the bypass in G3 is one .env edit away from being
+   reachable in a shared environment.
+
+FILES TOUCHED
+Logs to build dashboard.md only - this block. No code, migration, spec or config was changed;
+this is a read-only analysis pass.
+
+NEXT
+If you want me to implement any of it, the smallest useful slice is G4+G1: the approve endpoint
+plus the single writer of the INVITED -> ACTIVE transition, because until that exists the
+registration flow has nowhere to land and every account stays unusable. Say the word and I will
+also add the missing tasks.md for 002 so /speckit.analyze can compute real coverage.
+```
+
+</details>
+
+<details>
+<summary><h2>2026-10-02 tuning routin's score parser Part2</h2></summary>
+
+```text
+I checked the result of importing routin's score.
+
+In the sample of score blocks, I can see athlete's names
+
+GIRE Ellie from AST, CAI Ellie from SFM, YANOVSKIS Milana (YANOVSKIS Milana 12u) from SND
+
+Please enhance the script to load the athlete to the database aslo.
+
+follow the same style and format to the session `2026-10-02 tuning routin's score parser Part2` in `Logs to build dashboard.md` MD file
+
+(.venv) PS C:\Users\linma\workspace\02-learning-AI\2026summerproject> python scripts/ingest_routines.py "swim-meets\2026\20260305_WestZone_Sacramento_CA\AG 12U Female Solo Details.pdf" 
+
+Code Rank Draw Swimmer          Ref DD    J1   J2   J3   J4   J5     Total Pen.    Total        Routine 
+     1.   (6)   AST - ARMADA ARTISTIC SWIM TEAM                               
+                GIRE Ellie
+              HYBRID (0.5)           7.000 6.50 6.50 6.50 6.25 5.50 22.4583        85.7500       161.0500
+              HYBRID (0.5)           7.000 6.25 6.25 6.25 6.00 5.25 21.5833      
+              HYBRID (0.5)           7.000 6.00 6.00 6.00 5.75 5.25 20.7083      
+              HYBRID (0.5)           7.000 6.00 6.25 6.00 6.00 5.00 21.0000
+          TOTAL DIFFICULTY   28.000 28.000
+    Choreo and Music (1.4)                 6.25 6.25 6.25 6.50 5.25 26.2500        75.3000
+         Performance (1.2)                 6.25 6.25 6.50 6.75 5.25 22.8000
+         Transitions (1.4)                 6.25 6.25 6.25 6.50 5.75 26.2500
+                          
+ 
+     2.   (1)   SFM - SAN FRANCISCO MERIONETTES                               
+                CAI Ellie
+              HYBRID (0.5)           7.000 6.75 5.75 6.00 6.00 6.25 21.2917        84.2375       157.2375
+              HYBRID (0.5)           6.950 6.75 5.75 6.75 6.00 6.00 21.7188      
+              HYBRID (0.5)           6.650 6.50 5.50 6.25 6.00 6.00 20.2271      
+              HYBRID (0.5)           7.000 6.25 5.50 6.50 5.75 6.00 21.0000
+          TOTAL DIFFICULTY   27.600 27.600
+    Choreo and Music (1.4)                 6.00 6.25 5.50 6.50 6.25 25.9000        73.0000
+         Performance (1.2)                 6.25 6.00 5.75 6.75 6.00 21.9000
+         Transitions (1.4)                 6.25 6.00 5.25 6.25 5.75 25.2000
+                          
+ 
+     3.   (7)   SND - SOUTHERN NEVADA DESERT MERMAIDS                         
+                YANOVSKIS Milana 12u
+              HYBRID (0.5)           6.100 7.00 6.75 6.50 6.25 5.75 19.8250        76.9938       148 
+```
+
+```text
+The three names in the prompt were not being loaded because nothing in the pipeline ever
+looked at them. The parser was writing team_athletes - a jsonb array of the names exactly
+as the PDF printed them - and that array is lineage, not identity. It says who was on the
+sheet. It does not say who they are. The dashboard reads identity through
+as_result_person_link, so a routine result was being stored and left unattributable, and
+the swimmer never accumulated a history.
+
+Note what the three names have in common. Only CAI Ellie has a clean family/given split.
+GIRE Ellie is single-token-first-name, and YANOVSKIS Milana 12u carries a division age in
+the name field. Nobody can resolve a person from "YANOVSKIS Milana 12u" without first
+deciding that 12u is not part of the name - and that decision is exactly what identity
+mapping has to get right, so it had to be explicit and tested rather than incidental.
+
+WHAT GETS CREATED, AND WHAT GETS REFUSED
+scripts/routine_identity.py resolves each printed name to one of three outcomes:
+
+    matched exactly one existing person  -> reuse that person
+    matched two or more existing people  -> REPORTED, left unlinked
+    matched nobody                       -> create the person
+
+The middle case is the one worth stating plainly. The database already holds same-name,
+same-club swimmers, and "pick the first" would merge two athletes' histories into one
+person forever. Averaging a parent and a child's scores into a single row cannot be undone
+from the data afterwards, so an ambiguous name is left alone and printed. A short insert -
+the server acknowledging fewer rows than were sent - is the same class of problem and
+raises IngestError before anything is linked.
+
+A generational suffix is treated as part of the identity, never as noise: LIN Isabella,
+LIN Isabella Jr and LIN Isabella Sr all appear at the same club. A suffix-free fallback
+would let the Jr resolve to the parent, so a suffix-bearing name only ever matches on
+suffix-bearing keys and otherwise reads as a new person. as_person has no suffix column,
+so the suffix is folded into the stored given_name ("Isabella JR"), which keeps the three
+distinguishable without inventing a column the schema does not have.
+
+Full corpus, 178 routine PDFs: 1,500 distinct names over 5,779 occurrences. Suspicious
+candidates went 46 -> 15, and all 15 turned out to be legitimate printed age-group forms -
+CAI Zhening Peter, GOMEZ Angela Victoria, WOLFE Logan Michael, YANOVSKIS Milana 12u,
+KAN-Alfonso Katherine, and others carrying a middle name as well as an age group. Real
+names printed that way, not parser mistakes.
+
+A MISSING CLUB IS REPORTED, NEVER INVENTED
+as_club.id is the tenant id. A missing club is printed and its swimmers are left unlinked,
+because creating a club here would mean creating a tenant, and this step deliberately
+creates no tenant, no Auth user and no API key. Reuse is the same principle in milder
+form: an existing membership is not duplicated, and an inactive one does not count as
+existing.
+
+ORDER MATTERS, AND I GOT IT WRONG ON THE FIRST ATTEMPT
+I wired the identity pass into the function that writes the result rows. That was wrong:
+synchronized_meet() runs in main() afterwards, so on a first import the club this sheet
+introduces does not exist yet, and every one of its swimmers would have been reported as
+"club not in as_club". The order the write plan now documents is:
+
+    write results -> optional account provisioning -> link printed names to people
+
+Attribution runs last because it needs the as_club rows provisioning may have just
+created, and it runs whether or not provisioning happened. That split is the whole reason
+it is a separate function: --no-provision skips accounts, not attribution.
+
+ONE BUG THIS FOUND THAT WAS NOT ABOUT NAMES
+render_pdf_report formatted the swimmer's gender into a fixed-width column. Gender became
+optional when I added support for sheets that print no M/F prefix at all, so on exactly the
+sheet in this prompt - AG 12U Female Solo, the one with no prefixes - a dry run died with
+"unsupported format string passed to NoneType.__format__". It printed a gender for nobody's
+benefit and crashed on the honest answer. It now prints "-".
+
+That stayed invisible because the unit tests never rendered a no-prefix sheet. Same shape
+of mistake as the original scoring bug: the happy path was tested and the real input was
+not. The three names in the prompt were only findable because this sheet has no prefixes;
+had it been a prefixed sheet the dry run would have kept working and nobody would have
+looked.
+
+  TESTS
+124 pass, via python -m unittest discover -s tests -t . 22 are new and assert the decisions
+rather than the plumbing: an ambiguous name creates nothing and is reported, a Jr does not
+reach the parent, a missing club invents nothing, a short insert refuses to link, dry run
+counts without writing, and --no-provision still links identities while never calling
+synchronized_meet.
+
+  FULL CORPUS SWEEP - unchanged, 178 PDFs, nothing written
+    routine PDFs parsed : 178    athletes: 1607    scoring rows: 17065
+    unparsed rows       : 1      unreconciled rows: 5000 (all four-judge)
+
+Identical to the Part 1 baseline. None of this touched score parsing, and the sweep is how
+I know that.
+
+  NOT DONE, AND NEEDS YOU
+- No live run. Nothing was written to the database this session. The identity pass is tested
+  against a fake REST client, not against Supabase, so the first real import is still the
+  first real test of it.
+- The four-judge scoring rule is still unknown, so 62 PDFs still cannot be imported and
+  therefore still cannot be linked.
+- Seeded same-name, same-club people stay unresolved by design. They need a human decision,
+  and possibly a merge, before those names can be linked.
+- The nine bad as_meet_routine_result rows from the old parser are still there. Removing and
+  re-importing them is your call, not mine.
+- Six exposed tenant keys still need rotating.
+
+Status: printed names on routine results are now resolved to real people, with ambiguous
+names and missing clubs reported instead of guessed; identity linking is a separate step
+from account provisioning and runs under --no-provision; a generational suffix is part of
+the identity so Jr and Sr never collapse into a parent; the printed spelling is kept
+verbatim on the link as the only audit trail back to the PDF; ordering corrected so
+provisioning runs before linking; a crash on no-prefix sheets found and fixed; 124 tests
+passing; corpus sweep identical to baseline; nothing written to the database; nothing
+committed.
+```
+
+</details>
+
+<details>
+<summary><h2>2026-10-02 tuning routin's score parser</h2></summary>
+
+based on this analysis, enhance the script `scripts\ingest_routines.py`.
+
+0. scan the input PDF file, make sure it is a routin score file. Otherwise, skip and report the file is not a routin score PDF. 
+1. fix the bugs
+2. enhance the logs, print out each part of data from PDF, how gets parsed, and how to load to database - tables
+3. if error happens, print out what is the error, what is the block of data, why the parse fails
+
+follow the same style and format to the session `2026-10-02 tuning routin's score parser` in `Logs to build dashboard.md` MD file
+
+```text
+The four asks were: recognise a routine sheet before doing anything with it, fix the
+bugs, log every stage from PDF text to database table, and say clearly what went wrong
+and why when something does not parse. All four are done in scripts/ingest_routines.py,
+and the interesting part turned out to be that this parser was wrong in a way that
+looked like it worked.
+
+CLASSIFY FIRST
+classify_pdf() reads the text and decides whether a file is a routine sheet at all,
+before any parsing. Across swim-meets/2026 that is 178 routine PDFs and 179 that are not
+- figures sheets, awards sheets, heat sheets, results summaries - and the 179 are
+skipped and reported rather than half-parsed. This is the single most useful change,
+because the old parser would take any PDF, find rows that vaguely matched, and write
+whatever it found.
+
+THE BUG THAT MATTERED MOST WAS SILENCE
+Scoring rows were read with a regex that captured J1..J4 and then called the next number
+the total. On a five-judge sheet that stores J5 as the line total, and the row still
+"parses" - it just quietly means something else. Measured on the 17 West Zone sheets:
+181 of 1818 rows correct, 370 silently wrong, 928 dropped. No exception, no warning, no
+wrong-looking output. A database loaded from that is wrong in a way that looks fine.
+
+So each numeric token is now assigned to a column by its horizontal offset against the
+header printed on the same page, not by counting tokens. Repeated headers ("Total"
+appears twice) are numbered left to right, which is what separates the line total from
+the cumulative total from the routine total.
+
+THE JUDGE COUNT IS A PROPERTY OF THE MEET, NOT OF THE CODE
+I had this hardcoded as five. The corpus says otherwise: three meets print three judges,
+three print five, two print four. It is read from each sheet's header now, and every
+diagnostic names the rule it used, because "trimmed mean" on a four-judge panel is a
+false statement and I had been printing it.
+
+Three parsing bugs that each cost real rows, all found by reading actual output:
+- The difficulty factor is printed in brackets after the element name, "HYBRID (0.5)". On
+  a three-judge sheet its character offset lands under the Ref column, so every element
+  row looked like a deduction row. The bracketed factor is masked before columns are
+  assigned.
+- Some sheets print the column header once, above the first athlete, instead of repeating
+  it per athlete. That line was being consumed while collecting officials, so everything
+  below it had no header to map against and nothing parsed.
+- On a deduction row the Ref column holds the element's ORIGINAL difficulty while the DD
+  column holds the AWARDED one, so the row carries an extra number in the middle that
+  looks exactly like a judge score.
+
+THE ARITHMETIC, AND ONE FORMULA THAT WAS WRONG IN THE DOCS
+    judge mean          = middle three of five, plain mean of three
+    element line total  = judge mean * awarded DD * factor
+    AI line total       = judge mean * factor * 3
+    STC category total  = mean of printed fault counts * factor   (no x3)
+    printed Routine     = elements + AI + synchronization deduction
+
+The factor in brackets is not decorative. An earlier note here said DD/2, and I can now
+say why that ever looked true: one sheet used HYBRID 0.5 with a DD of exactly 7.000, so
+DD/2 and DD*0.5 agree on that row by coincidence. Every other factor in the meet
+disagreed, and with a real corpus that is not a rule, it is an artefact of one row.
+
+SYNCHRONIZATION IS STILL NOT PROMOTED TO A TOTAL
+Writing the STC deduction into synchronization_total put -15.9667 in a column that means
+a total, and let three STC rows race for it. It stays NULL. The deduction goes to
+routine_scores.synchronization_deduction and is what validates the printed Routine.
+
+Two things I got wrong here and had to walk back. First, I validated that the STC
+category totals sum to the printed deduction. They do not, and they are not supposed to:
+a routine can carry more than one STC panel, and I found sheets carrying two complete
+sets. Second, I let a category total that would not reproduce from its own fault counts
+block the import. Both were mine, and together they stopped five sheets that reconcile
+perfectly on everything that matters. Category totals are now reported as STC NOTES and
+never block; the printed deduction is the number the routine score is checked against.
+
+RECONCILIATION IS A GATE, NOT A COMMENT
+The printed totals are official, so they are what get written - but a printed line total
+that disagrees with the judges usually means the panel is scored by a rule the parser does
+not model, and writing it silently is how the West Zone data got wrong in the first
+place. A row that will not parse, or that will not reconcile, now stops the import.
+--allow-mismatch is the deliberate way past it, and I have not used it.
+
+THE FOUR-JUDGE PANELS I DID NOT SOLVE
+Charlotte David Regional A and Junior Olympics print four judges, and their printed line
+totals cannot be reproduced by dropping the highest and lowest, by dropping either one
+alone, or by taking the plain mean. The implied mean moves between positions from row to
+row on the same page. I could have picked the rule that matched the most rows and shipped
+it. I did not, because it would have written official-looking scores that are wrong, and
+because "mostly reconciles" is exactly how the original bug survived. 62 PDFs and 5000
+rows stay blocked until someone confirms the rule. That is the honest answer, not a
+result.
+
+FULL CORPUS SWEEP - 357 PDFs, dry run, nothing written
+    routine PDFs parsed : 178        athletes: 1607       scoring rows: 17065
+    clean (importable)  : 115        blocked: 63
+    unparsed rows       : 1          unreconciled rows: 5000 (all four-judge)
+
+    20260201_WinterInvitational_Puyllup_WA     24/24 clean   3 judges
+    20260305_WestZone_Sacramento_CA              17/17 clean   5 judges
+    20260321_Classic_Snohomish_WA               33/33 clean   3 judges
+    20260409_National_and_Junior_Buffalo_NY      24/25 clean   5 judges
+    20260423_Youth_Championship_and_12U          17/17 clean   5 judges
+    20260516_Charlotte_David_Regional_A           0/25 clean   4 judges
+    20260627_Junior_Olympics_Ypsilanti_MI         0/37 clean   4 judges
+
+Every three-judge and five-judge sheet in the corpus now parses and reconciles. The only
+failure outside the four-judge meets is a single row in the Buffalo sheet where the PDF
+itself is defective - "7.50" extracts as "75", so the row has four judge scores where the
+header promises five. I have not special-cased it. One broken row in 17065 is a data
+defect to raise with the meet, not a parser rule to invent.
+
+TOLERANCE
+Printed scores disagree with recomputation by small amounts because the meet software
+rounds intermediate values, so equality is the wrong test. The relative tolerance is
+1e-3. That absorbs a row landing 0.0067 off on 13.3667 (0.05%) and still refuses the
+four-judge rows, which are off by 0.34% - an order of magnitude apart. I picked the
+number by looking at the gap between those two populations, not by rounding up until the
+symptom went away.
+
+TESTS
+78 pass, via python -m unittest discover -s tests -t . (pytest is not available in this
+environment). Beyond the unit tests, three real PDFs are asserted end to end: a clean
+five-judge sheet, a three-judge sheet, and the STC-note case. The four-judge and
+malformed-row sheets are asserted to be REFUSED, because a test that only proves the
+happy path is what let the original bug through.
+
+NOT DONE, AND NEEDS YOU
+- The four-judge scoring rule. 62 PDFs are blocked on it and I will not guess it.
+- One live API key was printed to stdout by a real run and redacted here, as six earlier
+  ones were. They still need rotating; redaction is not rotation.
+- Nothing was written to the database this session - every run was a dry run. The routine
+  path still has no successful import behind it, and I would want one deliberate
+  end-to-end run on a sheet that parses cleanly before trusting it on a real meet.
+- The nine bad as_meet_routine_result rows from the old parser are still there. Removing
+  and re-importing them is your call, not mine.
+
+Status: classifier, column-aware parsing, dynamic three/four/five-judge handling,
+bracket-masked factors, STC deduction semantics, and a three-stage PDF -> parse -> DB
+trace all in place; 178 of 357 PDFs parse into 1607 athletes and 17065 scoring rows with
+115 sheets fully clean; STC category totals demoted from blocker to reported note after I
+found they legitimately do not sum on multi-panel routines; unparseable and
+unreconciled rows now stop the import unless --allow-mismatch is passed; 62 four-judge
+PDFs and one defective Buffalo row deliberately left blocked rather than guessed; 78
+tests passing; nothing written to the database; nothing committed.
+```
+
+</details>
+
 <details>
 <summary><h2>2026-10-02 loading routin's score error</h2></summary>
+
 prompt:
 
 capture the analysis summary following the same style and format to the session `2026-10-02 loading routin's score error` in `Logs to build dashboard.md` MD file
@@ -83,6 +1518,15 @@ THE 41 DROPPED LINES, AND WHY EACH ONE FELL
 
   23 + 18 = 41. This reproduces the warning count exactly.
 
+   >>> CORRECTION. That arithmetic does not hold up. The 9 AI rows listed immediately
+   >>> above are dropped by the same mechanism, so the three groups total 50, not 41, and
+   >>> "every athlete loses four element rows plus the first AI row" would be 45 across
+   >>> nine athletes. Either the 9 AI rows were not in fact dropped or the element split
+   >>> is wrong; I am not going to pick one and present it as fact. I could not re-derive
+   >>> it either, because the old regex parser no longer exists - it has been replaced.
+   >>> The cause in the next section (five judge columns read as four) is unaffected and
+   >>> was confirmed against the corrected parser on a real corpus.
+
   THE FIRST ROW, VERBATIM FROM THE LOG:
 
      1. HYBRID (0.5)  7.000 6.50 6.50 6.50 6.25 5.50 22.4583   85.7500   161.0500
@@ -132,22 +1576,33 @@ ROOT CAUSE, IN THREE PARTS
 
 THE ARITHMETIC, NOW PROVEN ON EVERY ROW
 
-  I recomputed all 63 scoring rows from the judge values and compared against the printed
-  line totals. Zero mismatches.
+   >>> CORRECTION, added later the same day by the `2026-10-02 tuning routin's score
+   >>> parser` session. The "divided by 2" below is WRONG and is not what the meet
+   >>> software does. The rule is `x DD x factor`, where factor is the number in
+   >>> brackets after the element name. It looked like DD/2 here only because every
+   >>> element quoted in this section is HYBRID with a factor of 0.5, so the two agree
+   >>> on all of them. Widening to the full 2026 corpus breaks it immediately: a
+   >>> Choreo and Music (1.4) row is x1.4, and a real HYBRID row at DD 6.650 gives
+   >>> 20.2271 by x0.5 and would be wrong by x/2. The corrected parser also adds the
+   >>> synchronization deduction to the Routine, which the line below omits.
 
-    element line total = mean of the middle three of J1..J5, x DD, divided by 2
-    AI line total      = mean of the middle three of J1..J5, x factor, x 3
-    DD used            = the AWARDED value in the DD column, not the Ref value
-    printed Total      = sum of the four element line totals
-    printed AI Total   = sum of the three AI line totals
-    printed Routine    = elements Total + AI Total
+   I recomputed all 63 scoring rows from the judge values and compared against the printed
+   line totals. Zero mismatches.
 
-  Example, the first row: sorted 5.50 6.25 6.50 6.50 6.50, trim to 6.50 6.50 6.25, mean
-  6.41667, x 7.000 / 2 = 22.4583. Matches the sheet.
+      element line total = mean of the middle three of J1..J5, x DD, x factor  (not x DD / 2)
+      AI line total      = mean of the middle three of J1..J5, x factor, x 3
+      DD used            = the AWARDED value in the DD column, not the Ref value
+      printed Total      = sum of the four element line totals
+      printed AI Total   = sum of the three AI line totals
+      printed Routine    = elements Total + AI Total + synchronization deduction
 
-  The deduction row: sorted 5.50 6.00 6.00 6.25 6.25, trim to 6.00 6.00 6.25, mean 6.08333,
-  x 0.500 / 2 = 1.5208. Confirms the awarded DD scores the element, and that TOTAL
-  DIFFICULTY 21.500 28.000 is 7+7+7+0.5 against 7+7+7+7.
+   Example, the first row: sorted 5.50 6.25 6.50 6.50 6.50, trim to 6.50 6.50 6.25, mean
+   6.41667, x 7.000 x 0.5 = 22.4583. Matches the sheet - but only because this row's
+   factor happens to be 0.5.
+
+The deduction row: sorted 5.50 6.00 6.00 6.25 6.25, trim to 6.00 6.00 6.25, mean 6.08333,
+   x 0.500 x 0.5 = 1.5208. Confirms the awarded DD scores the element, and that TOTAL
+   DIFFICULTY 21.500 28.000 is 7+7+7+0.5 against 7+7+7+7.
 
   All nine athletes reconcile against their own printed totals, for elements, for AI, and for
   the routine score.
@@ -599,6 +2054,7 @@ are left open for the human.
 ```
 
 </details>
+
 ---
 
 <details>
@@ -774,6 +2230,7 @@ gaps listed. No code, spec or database change made.
 ```
 
 </details>
+
 ---
 
 <details>
@@ -930,6 +2387,7 @@ along the way, `SCR` rows silently dropped, left unfixed pending a decision.
 ```
 
 </details>
+
 ---
 
 <details>
@@ -1094,6 +2552,7 @@ database or the specs was changed.
 ```
 
 </details>
+
 ---
 
 <details>
@@ -1275,7 +2734,9 @@ duplicated Monte Johnson data still in the database awaiting your decision.
 ```
 
 </details>
+
 ---
+
 <details>
 <summary><h2>2026-09-30 clear event data by event id</h2></summary>
 
@@ -1379,6 +2840,7 @@ rather than assumed closed; no committing run performed; nothing committed.
 ```
 
 </details>
+
 ---
 
 <details>
@@ -1656,6 +3118,7 @@ live database and the cleanup nearly deleted a real tenant; nothing committed.
 ```
 
 </details>
+
 ---
 
 <details>
@@ -1795,7 +3258,6 @@ citations updated; live database deliberately not touched; nothing committed.
 ```
 
 </details>
-
 
 ---
 
@@ -2205,7 +3667,7 @@ Status: implemented; not committed. Root .py count: 23 -> 0.
 ---
 
 <details>
-<summary><h2>2026-09-27 Update Model Diagram </h2></summary>
+<summary><h2>2026-09-27 Update Model Diagram</h2></summary>
 
 build a data model diagram, update existing ones
 
@@ -2462,8 +3924,10 @@ Done. Changes made (verified end-to-end against local Supabase DB):
      dashboard works single-club in practice.
 Status: implemented and verified; not committed.
 ```
+
 </details>
-----
+
+---
 
 <details>
 <summary><h2>2026-09-20</h2></summary>
@@ -2702,6 +4166,7 @@ The application builds successfully with the new styling integrated.
 
 <details>
 <summary><h2>2026-08-05</h2></summary>
+
 TODO: 1. merge Data Model with User Management API and Meet result import pipeline
 TODO: 2. Merge the database design with sql\create_figures_table.sql and backend\supabase\migrations\20260804_initial_schema.sql to support the dashboard
 refine the design to use swimming score of firure and routine. The data model is documented in sql\create_figures_table.sql
@@ -3103,8 +4568,6 @@ To build a full-stack performance dashboard for **Artistic Swimming**, you will 
 3. **Judges' Score Variance Tracker:** Analyze score variations across judges to detect biased scoring patterns.
 
 </details>
-
----
 
 <details>
 <summary><h2>2026-07-31</h2></summary>

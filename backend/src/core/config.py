@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "Artistic Swimming Analytics API"
     APP_ENV: str = "development"
     DEBUG: bool = True
+    # Demo auth endpoints require APP_ENV=development AND DEMO_AUTH_ENABLED=true
+    # (research.md D4, T002). Safe default: off, so the dev branch is not live
+    # just because APP_ENV defaults to development.
+    DEMO_AUTH_ENABLED: bool = False
     LOG_LEVEL: str = "INFO"
 
     # Server

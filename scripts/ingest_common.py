@@ -154,6 +154,22 @@ class SupabaseRest:
             return []
         return self._request("POST", table, json=list(rows), prefer="return=representation")
 
+    def upsert(self, table: str, rows: Sequence[Dict[str, Any]],
+               on_conflict: str) -> List[Dict[str, Any]]:
+        """Insert rows, updating any that collide on `on_conflict`.
+
+        Needed because `as_result_person_link` has a unique index on
+        (result_table, result_id, athlete_name): re-importing the same PDF must attach
+        the same links again rather than either duplicating them or failing.
+        `merge-duplicates` is what makes a re-run converge instead of accumulating.
+        """
+        if not rows:
+            return []
+        return self._request(
+            "POST", table, params={"on_conflict": on_conflict}, json=list(rows),
+            prefer="resolution=merge-duplicates,return=representation",
+        )
+
     def delete_by_ids(self, table: str, ids: Sequence[str]) -> int:
         if not ids:
             return 0
@@ -304,7 +320,7 @@ def describe(payload: Dict[str, Any]) -> str:
     ]
     if "figures" in payload:
         lines.append(f"  figures: {len(payload.get('figures') or [])}")
-    lines.append(f"  judges : {len(payload.get('judges') or [])}")
+    lines.append(f"  judge panels: {len(payload.get('judges') or [])}")
     lines.append(f"  results: {len(payload.get('athletes') or [])}")
     for warning in payload.get("warnings") or []:
         lines.append(f"  WARNING: {warning}")

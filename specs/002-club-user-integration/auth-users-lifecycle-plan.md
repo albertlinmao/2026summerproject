@@ -214,13 +214,15 @@ migration, and it is out of scope for this plan.
 
 ## 6. Verification against the Constitution
 
-`.specify/memory/constitution.md` v1.2.0 — *"This Constitution supersedes all other
-documentation and local practices."*
+`.specify/memory/constitution.md` **v2.0.0** — *"This Constitution supersedes all other
+documentation and local practices."* Principles 16 and 7 were amended 2026-10-04 by
+owner ruling (`spec.md` → Clarifications, session 2026-10-04); the verdicts below are
+read against v2.0.0, not the v1.2.0 text this table was first written against.
 
 | Principle | Verdict | Note |
 |---|---|---|
-| **16 External User Management** — identity strictly delegated to the user service; "local databases MUST only store UUID references... never duplicating profile or auth data" | **CONFLICT** | The ingest path creates `auth.users` rows from `scripts/user_mgmt_sync.py`, which lives in the *analytics* repo, not the user service. It calls the GoTrue admin API directly rather than the user service's API. This is a pre-existing arrangement, not one this plan introduces, but the plan does not resolve it. Either the seeding path moves behind a user-service endpoint, or Principle 16 is amended to carve out machine seeding. **Needs a human decision.** |
-| **7 Security** — "OAuth2 for authentication", JWT, RBAC | **PARTIAL** | The flows above use GoTrue's password grant, which is *not* OAuth2. GoTrue supports OIDC authorization-code + PKCE and the same `auth.users` table; that would satisfy Principle 7 properly but adds a client and a redirect URI. Recommend it before production, and note the constitution asks for it. |
+| **16 External User Management** — identity strictly delegated to the user service; "local databases MUST only store UUID references... never duplicating profile or auth data" | **AMENDED (v2.0.0)** | Closed 2026-10-04. P16 now permits an RLS-scoped authorization mirror under four conditions: populated only from the user service's feed, RLS on every mirror table, authorization resolved per request from the database, and rebuildable from the feed. Credentials, password material and refresh tokens stay absolutely prohibited. The ingest path that produced this conflict is separately gone: OQ #9 / research D1 deletes `get_or_create_auth_user` and `DEFAULT_PASSWORD`, so ingest creates no accounts at all (tasks.md T083). |
+| **7 Security** — "OAuth2 for authentication", JWT, RBAC | **AMENDED (v2.0.0)** | Closed 2026-10-04. P7 permits GoTrue-managed credential authentication alongside OAuth2, on the condition that the user service must not present it as a general-purpose OAuth2 grant nor expose it to third-party clients. The same amendment requires RS256 with published JWKS, unconditional signature verification and per-request database authorization — the `security.py` work in §7 step 2. |
 | **1 API First** — "No code should be written until the API spec is defined and agreed upon" | **GAP** | `design.md` §5.1 is prose plus an error list, not an OpenAPI document. Principle 12 makes it a merge gate. `/auth/claim-account`, `/auth/me/password`, `/auth/me/enable` do not exist in the contract at all. Must land as OpenAPI before any of this is implemented. |
 | **3 Test First** — unit, integration, contract, E2E | **PARTIAL** | `tests/test_auth_provisioning.py` (16 tests) covers the provisioning and gate behaviour with a fake GoTrue. Nothing covers the endpoints, because they do not exist. |
 | **4 Data Integrity** — traceability to official results | **AT RISK** | Not about scores here, but §5's name collision merges two swimmers' data into one person, which is the same class of defect the principle exists to prevent. |
@@ -232,20 +234,27 @@ documentation and local practices."*
 | **8 Accessibility, 9 Performance, 14 Layered Analytics, 15 ML** | **N/A** | Not touched. |
 | **11 AI Governance** | **HELD** | Not touched. |
 | **12 CI/CD** | **GAP** | Follows from Principle 1: no OpenAPI → no merge, so Principle 1's gap blocks the pipeline gate too. |
-
 ### Verdict
 
-**Not clear to implement as written.** Two blocking items, both requiring a
-decision that is not mine to make:
+**Both blocking decisions are closed.** The two items that were "not mine to
+make" were escalated to the owner and ratified as constitution amendments on
+2026-10-04:
 
-1. **Principle 16 vs. ingest-path provisioning.** Delegation or an amendment.
-2. **Principle 7 vs. the password grant.** Password grant now, or OIDC + PKCE now.
+1. **Principle 16 vs. ingest-path provisioning** — amended (row above); the
+   provisioning path itself is deleted by OQ #9, so the conflict is closed twice over.
+2. **Principle 7 vs. the password grant** — amended; GoTrue credential auth is
+   sanctioned alongside OAuth2 under the conditions noted above.
 
-And one structural prerequisite: **the OpenAPI document for `/auth/*`
-(Principle 1),** without which Principle 12 blocks the merge regardless.
+The structural prerequisite, **the OpenAPI document for `/auth/*` (Principle 1)**,
+landed as [`contracts/openapi.yaml`](./contracts/openapi.yaml) (22 paths / 24
+operations), with [`contracts/dashboard-bff.yaml`](./contracts/dashboard-bff.yaml)
+for the four BFF proxies. Both are validated as two separate documents by
+`scripts/validate_contracts.py` in CI, which is Principle 12's gate. The remaining
+verdicts in the table above (Principles 3, 4, 6, 10) are implementation gaps and are
+tracked as tasks in [`tasks.md`](./tasks.md), not as open decisions.
 
-The design decisions above are still sound and worth keeping while those are
-settled — §2 in particular is required under either resolution.
+The design decisions above are still sound and worth keeping — §2 in particular is
+required under either resolution.
 
 ---
 
