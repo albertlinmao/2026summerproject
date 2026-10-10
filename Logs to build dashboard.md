@@ -5,9 +5,107 @@
 <details>
 <summary><h2>2026-08-XX</h2></summary>
 
-```text
+</details>
 
-```
+<details>
+<summary><h2>2026-10-09 Phase 1 - testing</h2></summary>
+
+follow the same style and format to capture the testing step session to document how to verify the phase 1 implementation to the block 2026-10-09 Phase 1 - testing in the MD file Logs to build dashboard.md
+
+`	ext
+READ FIRST (scope of this pass)
+tasks.md Phase 1 (T001-T008, all [X]) verified against the working tree. Tests and
+verification cover: contract validation (T003), backend test runner (T001), shared errors/audit
+(T004-T005), config flag (T002), migrations 05_org_model.sql and 06_membership_multi_role.sql
+(T006,T008), and the live database state. UI smoke is manual (no new Phase 1 UI paths that
+must be hit by this block). All commands below run from repo root unless noted.
+
+HEADLINE
+Phase 1 verification is reproducible. Contract validator passes on both contracts, root
+dashboard test suite (auth provisioning) passes, live DB has as_club.tenant_id populated with
+0 NULLs and the multi-role membership unique constraint present. Scripts/commands are provided
+to re-run each check.
+
+HOW TO RUN TEST SCRIPTS
+
+  1) Contract validation (T003)
+     - Command:
+       python scripts/validate_contracts.py
+     - Expected: "OK" for both contracts, exit 0. With openapi-spec-validator installed,
+       also reports "openapi-spec-validator: OK" for each.
+     - Notes: validates as two documents (no merge), checks duplicate keys, local-only ,
+       non-empty paths, >=1 response per operation.
+
+  2) Dashboard test runner - auth provisioning (T001)
+     - Command (repo root):
+       uv run --no-project --with-requirements backend/requirements.txt python -m pytest tests/test_auth_provisioning.py -q -p no:cacheprovider
+     - Expected: 17 passed in < 1s. Uses fake GoTrue admin; no live DB.
+     - If you want to list tests: add --collect-only.
+
+  3) Migration test (T009 verification context; Phase 1 laid groundwork) - optional but useful
+     - From api/user-management:
+       cd api/user-management
+       uv run --no-project --with "pytest>=8.3.3" --with "psycopg2-binary>=2.9.9" python -m pytest supabase/tests/test_migration_org_model.py -q --no-header -p no:cacheprovider
+     - Expected: 49 passed (verifies 05_org_model.sql shape against live/empty-DB replay).
+     - Requires Postgres reachable as configured by that test harness.
+
+  4) User-service backend tests (Phase 2 context; not Phase 1) - skip unless needed
+     - From api/user-management/backend:
+       uv run --no-project --with-requirements requirements.txt python -m pytest -q -p no:cacheprovider
+     - Expected: 104 passed, 2 failed (pre-existing mock mismatches in tests/unit/test_gdpr_service.py).
+
+SMOKE TESTS ON UI (manual)
+
+  Phase 1 introduced no new UI routes/endpoints that require a browser smoke. Verify UI still
+  boots and existing auth flows remain unchanged:
+  
+  1) Frontend dev server (if running): http://localhost:4200
+     - Quick check: app loads, login screen renders, no console errors related to new flags.
+  2) Dashboard backend (if running): http://127.0.0.1:8080/docs or http://localhost:18081/docs
+     - No new Phase 1 public endpoints; no schema-breaking changes to existing ones.
+  3) Config flag sanity (code): ensure DEMO_AUTH_ENABLED is false in .env (T002). Demo
+     endpoints require APP_ENV=development AND DEMO_AUTH_ENABLED=true; default off prevents
+     accidental exposure.
+
+VERIFY OBJECTS DATA/TABLES CREATED IN THE DATABASE
+
+  1) as_club tenant_id populated (T006)
+     - Host psql (Supabase DB on localhost:5432, container listens internally 5432):
+       docker exec supabase-db psql -U postgres -d postgres -c "SELECT count(*) AS clubs, count(*) FILTER (WHERE tenant_id IS NULL) AS null_tenant FROM as_club;"
+     - Expected: clubs=7, null_tenant=0. All rows have tenant_id = tenant.id.
+
+  2) membership multi-role unique constraint (T008)
+     - Check constraint/index:
+       docker exec supabase-db psql -U postgres -d postgres -c "SELECT indexname, indexdef FROM pg_indexes WHERE tablename='membership' AND indexname='membership_tenant_user_role_key';"
+     - Expected: exists as UNIQUE (tenant_id, user_id, role_id).
+
+  3) Org tables present (T010/T019 context)
+     - List tables:
+       docker exec supabase-db psql -U postgres -d postgres -c "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('as_club','as_person','as_person_identity','as_club_membership','as_person_link','as_team','as_team_member') ORDER BY tablename;"
+     - Expected: all 7 present.
+
+  4) app_* helpers and RLS (T018-T019)
+     - app helpers:
+       docker exec supabase-db psql -U postgres -d postgres -c "SELECT proname FROM pg_proc WHERE proname LIKE 'app_%' ORDER BY proname LIMIT 20;"
+     - Expected: includes app_current_tenant_ids, app_is_tenant_admin(uuid), plus existing app_*.
+     - RLS enabled (spot check):
+       docker exec supabase-db psql -U postgres -d postgres -c "SELECT relname, relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND relname IN ('as_club','as_person','as_club_membership') ORDER BY relname;"
+     - Expected: relrowsecurity true for those tables.
+
+  5) tenant_api_keys and permissions (T012-T013)
+     - tenant_api_keys count:
+       docker exec supabase-db psql -U postgres -d postgres -c "SELECT count(*) FROM tenant_api_keys;"
+     - Expected: 7 rows (as in live state).
+     - permission seeds:
+       docker exec supabase-db psql -U postgres -d postgres -c "SELECT code FROM permission ORDER BY code;"
+     - Expected: at least approve_memberships, manage_teams, upload_video, annotate_video, view_analytics (5 rows).
+
+NOTES
+  - Host must reach DB on localhost:5432. Backend .env points to host.docker.internal:5433 for
+    container-only; override for host runs.
+  - Do NOT commit; no changes expected if verification passes.
+  - Phase 2 smoke scripts (throwaway) live under %TEMP%/opencode/ and are not part of repo.
+` 
 
 </details>
 
